@@ -1,0 +1,11 @@
+#user input
+number1 = int(input("Number 1: "))
+number2 = int(input("Number 2: "))
+
+#define variables
+total_sum = number1 + number2
+product_result = number1 * number2
+
+#print results
+print(f"The sum of the numbers: {total_sum}")
+print(f"The product of the numbers: {product_result}")
