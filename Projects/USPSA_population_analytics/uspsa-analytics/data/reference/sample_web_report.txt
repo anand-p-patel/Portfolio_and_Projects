@@ -1,0 +1,16 @@
+$INFO PractiScore_Version:1.678
+$INFO Match name:Sample Club USPSA Night Match
+$INFO Match date:03/14/2026
+$INFO Club name:Sample Practical Shooters
+$INFO Club code:TX99
+$INFO Match level:Level I
+$INFO Classifiers:1
+E 1,A123456,Jordan,Alvarez,No,f5,x,y,B,Carry Optics,412.5501,3,Minor,a,b,c,d,e,f,g,h,i,j,k,l,m,n,o,p,q,r,s,t,No,32,No,No
+E 2,TY98765,Sam,Okafor,No,f5,x,y,GM,Limited Optics,455.0000,1,Minor,a,b,c,d,e,f,g,h,i,j,k,l,m,n,o,p,q,r,s,t,No,41,No,Yes
+E 3,PEN0001,Riley,Chen,Yes,f5,x,y,C,Open,0.0000,0,Major,a,b,c,d,e,f,g,h,i,j,k,l,m,n,o,p,q,r,s,t,Yes,28,No,No
+G 1,101,20,100,No,,Fast Hands,Comstock
+G 2,102,16,80,Yes,CM 99-11,El Presidente-ish,Comstock
+I x,1,1,No,No,16,0,4,0,0,0,0,z,z,z,z,z,z,z,0,z,z,z,z,z,17.43,z,92,5.2782,92.0000,2
+I x,1,2,No,No,19,0,1,0,0,0,0,z,z,z,z,z,z,z,0,z,z,z,z,z,14.10,z,98,6.9504,100.0000,1
+I x,2,1,No,No,12,0,3,0,1,0,0,z,z,z,z,z,z,z,1,z,z,z,z,z,11.80,z,69,5.0000,84.2000,2
+I x,2,2,No,No,15,0,1,0,0,0,0,z,z,z,z,z,z,z,0,z,z,z,z,z,9.75,z,78,8.0000,100.0000,1
