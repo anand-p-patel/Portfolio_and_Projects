@@ -1,0 +1,24 @@
+# Environments
+.venv/
+__pycache__/
+*.pyc
+
+# Local data & artifacts (regenerable or machine-specific)
+data/uspsa.db
+data/debug/
+data/raw_html/
+data/raw_reports/     # YOUR live scraped corpus — not committed
+data/discovery_log.jsonl
+data/match_index.json
+data/pending_matches.json
+data/scrape_progress.json
+
+# Credential-equivalent — never commit
+data/session_state.json
+data/browser_profile/
+.streamlit/secrets.toml
+
+# Note: data/sample_reports/ (the 3 bundled real matches) and
+# data/reference/ ARE tracked on purpose — they power the
+# credential-free reviewer path (used as a fallback when your live
+# data/raw_reports/ corpus is empty).

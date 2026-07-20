@@ -1,0 +1,16 @@
+# Shot-timer dark theme — loads automatically when you run
+# `streamlit run dashboard.py` from the project folder.
+[theme]
+base = "dark"
+primaryColor = "#f59e0b"             # brass amber (controls, sliders, focus)
+backgroundColor = "#0b0f14"          # near-black blue slate
+secondaryBackgroundColor = "#141a22" # cards / sidebar
+textColor = "#e2e8f0"
+
+[browser]
+gatherUsageStats = false
+
+[server]
+# Fixed port so this dashboard never collides with other Streamlit
+# apps on your machine (those default to 8501).
+port = 8531
