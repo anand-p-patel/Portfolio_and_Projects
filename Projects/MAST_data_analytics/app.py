@@ -70,13 +70,17 @@ CAN_ANALYZE = _have("lightkurve")
 CAN_FETCH_SPECTRA = _have("astroquery")
 
 
-def run_analysis(name, mission, train_pinn, quick, wr_star=None):
+def run_analysis(name, mission, train_pinn, quick, wr_star=None,
+                 search_id=None):
     """
     Run the full pipeline for one object, inline, with live status.
     Heavy deps (lightkurve, torch) are imported lazily here so the base
     dashboard never pulls them in. For a Wolf-Rayet star (wr_star dict)
     it runs the variability path with literature Teff/radius/period;
-    otherwise the transit path. Returns (ok, error_message).
+    otherwise the transit path. `search_id` is the MAST-resolvable id to
+    search on (KIC/TIC) when the display name isn't resolvable (KOI/TOI
+    designations); results are still stored under `name`. Returns
+    (ok, error_message).
     """
     try:
         from pipeline.ingest import fetch_light_curve, get_stellar_params
@@ -91,11 +95,12 @@ def run_analysis(name, mission, train_pinn, quick, wr_star=None):
                 lc = fetch_light_curve(wr_star["ident"], mission="TESS",
                                        quarters=2 if quick else None)
             else:
-                lc = fetch_light_curve(name, mission=mission,
+                lc = fetch_light_curve(search_id or name, mission=mission,
                                        quarters=1 if quick else None)
             if lc is None:
                 status.update(label="No light curve found", state="error")
-                return False, f"No light curve found for {name}."
+                return False, (f"No light curve found for {name} "
+                               f"({search_id or name}).")
 
             if wr_star:
                 st.write("Lomb-Scargle + SHO-PINN (coherence)…")
@@ -134,7 +139,10 @@ def show_unanalyzed(name, entry, mission):
     c2.metric("Archive radius",
               f"{prad:.2f} R⊕" if prad is not None else "—")
 
-    cmd = f'python run_pipeline.py --targets "{name}" --mission {mission} --pinn'
+    # KOI/TOI display names don't resolve at MAST; use the KIC/TIC id.
+    target_id = (entry or {}).get("search_id") or name
+    cmd = (f'python run_pipeline.py --targets "{target_id}" '
+           f'--mission {mission} --pinn')
 
     if not _have("lightkurve"):
         # Hosted deploy without the ingestion stack — offer the command.
@@ -155,7 +163,8 @@ def show_unanalyzed(name, entry, mission):
                  "accurate depth")
         if st.button(f"▶ Analyze {name} now", type="primary",
                      width="stretch"):
-            ok, err = run_analysis(name, mission, train, quick)
+            ok, err = run_analysis(name, mission, train, quick,
+                                   search_id=(entry or {}).get("search_id"))
             if ok:
                 st.rerun()
             else:

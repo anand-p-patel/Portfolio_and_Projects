@@ -78,9 +78,12 @@ def _kepler_host(kepler_name):
 def fetch_catalog(mission, limit=6000):
     """
     The whole transit catalogue for a mission as a list of dicts:
-        {"name", "status", "period_days", "prad_earth"}
+        {"name", "status", "period_days", "prad_earth", "search_id"}
     where status is "confirmed" (a confirmed transiting planet's host) or
-    "candidate" (an unconfirmed object still being vetted).
+    "candidate" (an unconfirmed object still being vetted). `search_id` is
+    a MAST-RESOLVABLE identifier (KIC / TIC number) — KOI names like
+    "K07182.01" and TOI ids like "TOI-1001.01" don't resolve to a sky
+    position, but the star's KIC/TIC does, so ingestion searches on that.
 
       Kepler -> KOI cumulative table (CONFIRMED hosts + CANDIDATE KOIs)
       TESS   -> TOI table (CP/KP confirmed hosts + PC candidates)
@@ -93,8 +96,8 @@ def fetch_catalog(mission, limit=6000):
 
     if m == "kepler":
         adql = (f"select top {limit} kepoi_name,kepler_name,koi_disposition,"
-                "koi_period,koi_prad from cumulative where koi_disposition "
-                "in ('CONFIRMED','CANDIDATE')")
+                "koi_period,koi_prad,kepid from cumulative where "
+                "koi_disposition in ('CONFIRMED','CANDIDATE')")
         for r in _query(adql):
             if r.get("koi_disposition") == "CONFIRMED":
                 name = _kepler_host(r.get("kepler_name"))
@@ -102,13 +105,15 @@ def fetch_catalog(mission, limit=6000):
             else:
                 name = r.get("kepoi_name")
                 status = "candidate"
+            kepid = r.get("kepid")
             if name:
                 rows.append({"name": name, "status": status,
                              "period_days": r.get("koi_period"),
-                             "prad_earth": r.get("koi_prad")})
+                             "prad_earth": r.get("koi_prad"),
+                             "search_id": f"KIC {int(kepid)}" if kepid else name})
 
     elif m == "tess":
-        adql = (f"select top {limit} toi,tfopwg_disp,pl_orbper,pl_rade "
+        adql = (f"select top {limit} toi,tfopwg_disp,pl_orbper,pl_rade,tid "
                 "from toi where tfopwg_disp in ('CP','KP','PC')")
         for r in _query(adql):
             toi = r.get("toi")
@@ -118,9 +123,11 @@ def fetch_catalog(mission, limit=6000):
             else:
                 name = f"TOI-{toi}"
                 status = "candidate"
+            tid = r.get("tid")
             rows.append({"name": name, "status": status,
                          "period_days": r.get("pl_orbper"),
-                         "prad_earth": r.get("pl_rade")})
+                         "prad_earth": r.get("pl_rade"),
+                         "search_id": f"TIC {int(tid)}" if tid else name})
 
     # Dedup on name; a confirmed row beats a candidate one.
     best = {}
