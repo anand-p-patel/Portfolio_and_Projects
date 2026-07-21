@@ -1,0 +1,41 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.pytest_cache/
+.ipynb_checkpoints/
+
+# --- Virtual environments ---
+.venv/
+venv/
+env/
+.python-version
+
+# --- Secrets (never commit credentials) ---
+.streamlit/secrets.toml
+*.key
+
+# --- Editor / OS cruft ---
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# --- Scratch / local ---
+*.log
+*.bak
+scratch_*
+# astroquery / MAST download caches (spectra are re-fetched or bundled)
+mastDownload/
+**/mastDownload/
+
+# --- INTENTIONALLY COMMITTED (do NOT ignore) ---
+# The dashboard ships with a bundled demo so it works on first launch with
+# no downloads. Keep these tracked:
+#   kepler.db                 - results metadata (synthetic + Kepler 8-17 +
+#                               TOI-132 + Wolf-Rayet stars)
+#   data/processed/*.npz      - light-curve arrays + PINN model curves
+#   data/spectra/*.npz        - bundled JWST/HST Wolf-Rayet spectra

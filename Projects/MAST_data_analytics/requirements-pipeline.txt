@@ -1,0 +1,12 @@
+# Full pipeline dependencies (run_pipeline.py, validate.py): MAST
+# ingestion + Phase 4 PINN training. Includes everything the dashboard
+# needs (via the -r below) plus the heavy, training-only libraries.
+#
+#   python -m pip install -r requirements-pipeline.txt
+#
+# torch requires Python <= 3.13 — create the venv with `py -3.12 -m venv
+# .venv` if your default Python is newer.
+-r requirements.txt
+lightkurve>=2.4
+astroquery     # JWST/HST spectra fetch (pipeline.spectra); also a lightkurve dep
+torch          # Phase 4 PINN training only; the dashboard never imports it
