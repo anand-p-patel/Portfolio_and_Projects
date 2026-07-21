@@ -15,13 +15,13 @@ Real USPSA match data ships with the project, so everything runs end-to-end stra
 
 ```bash
 pip install -r requirements.txt
-python scrape.py --reparse-only    # load the bundled real matches into a database
 streamlit run dashboard.py         # opens http://localhost:8531
 ```
 
-That's it. Your browser opens to a working dashboard with **3 real matches — 1,094 entries, 13,568 stage scores**. Click through the three tabs and play with the filters in the sidebar.
+That's it — two commands. The dashboard builds its database from the bundled matches on first launch, so your browser opens to a working app with **3 real matches — 1,094 entries, 13,568 stage scores**. Click through the three tabs and play with the filters in the sidebar.
 
 > On Windows PowerShell, if `python` isn't found, use the launcher: `py -3` in place of `python`.
+> Prefer to load the database explicitly first? Run `python scrape.py --reparse-only` before launching — the dashboard does the same thing automatically.
 
 ---
 
@@ -34,6 +34,14 @@ Want more than the bundled matches? The dashboard can scrape live results for an
 3. It shows how many USPSA matches it found and roughly how long they'll take. Click **Fetch**, watch the progress bar, then **Reload data**.
 
 A browser window may pop up to clear a one-time Cloudflare check — you don't have to click through matches or type anything; it drives itself. Big date ranges (a whole year, nationwide) can be thousands of matches and take hours, so starting with one state or a narrow window is the easy way in. Runs are resumable — stop and re-fetch anytime.
+
+---
+
+## Deploy the dashboard (Streamlit Community Cloud)
+
+Point [share.streamlit.io](https://share.streamlit.io) at this repo with `dashboard.py` as the entry point — no secrets or extra config needed. On first load the app self-populates from the bundled sample matches, so the hosted demo is never blank.
+
+**The live-fetch panel is automatically hidden on hosted deploys** and replaced with a short notice. That's by design, not a limitation of the scraper: PractiScore sits behind Cloudflare, which blocks cloud-datacenter IPs, and hosted platforms have no browser to drive. Scraping is a **local** capability — clone the repo, `playwright install chromium`, and the fetch panel appears and works. The hosted app is the analytics showcase; your machine is the data-collection tool.
 
 ---
 
@@ -52,9 +60,9 @@ The difficulty score is the clever bit: it z-scores each skill class against its
 ## How it works (the 10-second version)
 
 ```
-match_search.py ─►  scrape.py  ─►  data/raw_reports/  ─►  db.py  ─►  analytics.py  ─►  dashboard.py
- find matches       fetch their      match JSON /         SQLite      pandas +          Streamlit
- by date (Algolia)  results pages    text reports         (or Postgres)  Z-scores        + Plotly
+match_search.py ─► scrape.py ─► data/raw_reports/ ─► ingest.py ─► db.py ─► analytics.py ─► dashboard.py
+ find matches       fetch their    match JSON /        parse to      SQLite    pandas +         Streamlit
+ by date (Algolia)  results pages  text reports        one contract  (Postgres)  Z-scores       + Plotly
 ```
 
 The data comes straight out of each match's **public results page** — PractiScore renders the full match into the page itself, so no login is needed. Match *discovery* uses PractiScore's own search index to list matches by date. Every scraped hit factor is cross-checked against its own scoring math, so a bad parse gets flagged loudly instead of quietly corrupting the numbers.
@@ -66,7 +74,8 @@ Deeper dive — the parsing, the scraping strategy, the schema, and how it was v
 ## Troubleshooting
 
 - **`python check_setup.py`** runs a preflight check (Python deps, browser, database) and tells you exactly what's missing.
-- **Dashboard is empty?** Run `python scrape.py --reparse-only` first to load the bundled matches.
+- **Dashboard is empty?** It should self-populate on first launch; if not, run `python scrape.py --reparse-only` to load the bundled matches, then click **Reload data**.
+- **No ⚡ Fetch panel?** That's expected on a hosted deploy — live scraping runs locally only. Install the browser (`playwright install chromium`) to enable it on your machine.
 - **Live fetch finds nothing?** Make sure your date range actually contains matches; try a wider window or drop the state filter.
 
 ## Requirements

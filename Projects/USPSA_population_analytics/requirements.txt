@@ -10,3 +10,6 @@ plotly>=5.18
 
 # Optional: real PostgreSQL backend instead of the default SQLite file
 # psycopg2-binary>=2.9
+
+# Optional (dev): run the unit tests with `pytest test_match_search.py`
+# pytest>=8.0

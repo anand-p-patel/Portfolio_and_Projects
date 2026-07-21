@@ -138,6 +138,12 @@ def style_fig(fig, height: int | None = None):
 def load_frames(db_url: str):
     engine = db.get_engine()
     db.init_db(engine)
+    # Zero-config bootstrap: on a fresh clone or a hosted deploy the database
+    # isn't committed, so an empty DB self-populates from whatever reports are
+    # on disk — the bundled sample matches when there's no scraped corpus.
+    if (db.summary(engine).get("matches") or 0) == 0:
+        import ingest
+        ingest.ingest_raw_reports(prune=False, verbose=False)
     return (registrations_frame(engine),
             classifier_scores_frame(engine),
             db.summary(engine))

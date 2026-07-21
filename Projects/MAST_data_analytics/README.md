@@ -39,6 +39,8 @@ Note: PyTorch requires Python ≤ 3.13 — on Windows use `py -3.12 -m venv .ven
 
 ## Deploy to Streamlit Community Cloud
 
+**Hosted vs local.** The hosted dashboard is a **precomputed showcase** — it displays the bundled results (transits, PINN fits, vetting, variability, and JWST/HST spectra) but does **not** run the live pipeline: MAST ingestion, PINN training, and spectrum fetching need heavier dependencies (lightkurve, torch, astroquery) that aren't installed on the lightweight cloud build. To run the pipeline on your own targets, clone and install `requirements-pipeline.txt` locally (the "Analyze now" / "Fetch spectrum" buttons appear only there). The app detects this automatically and shows a banner on the hosted deploy.
+
 The dashboard is deployment-ready — the bundled database and `data/` arrays ship in the repo, so a fresh deploy renders results on first visit with no pipeline run.
 
 1. Push this repo to GitHub (the demo DB + `data/processed/*.npz` + `data/spectra/*.npz` are committed on purpose).

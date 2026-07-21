@@ -36,12 +36,18 @@ def _resolve_npz(stored_path: str) -> str:
     """
     Resolve a target's .npz path portably. The DB stores the absolute
     path from the machine that processed the target; on another machine
-    (a cloud deploy from a cloned repo) that path won't exist, so fall
-    back to the same filename under the current DATA_DIR.
+    (e.g. a Linux cloud deploy of a DB written on Windows) that path won't
+    exist, so fall back to the same filename under the current DATA_DIR.
+
+    NOTE: the stored path may use a different OS's separator than the host
+    (a Windows path like `...\\Kepler-10.npz` on Linux), so extract the
+    filename by splitting on BOTH separators — os.path.basename alone is
+    host-specific and would return the whole Windows string on Linux.
     """
     if os.path.exists(stored_path):
         return stored_path
-    return os.path.join(DATA_DIR, os.path.basename(stored_path))
+    filename = stored_path.replace("\\", "/").rsplit("/", 1)[-1]
+    return os.path.join(DATA_DIR, filename)
 
 
 def _connect(db_path: str = DB_PATH):

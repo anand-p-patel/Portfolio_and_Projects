@@ -63,6 +63,13 @@ def _have(module):
         return False
 
 
+# Can this instance run the LIVE pipeline (MAST ingestion + PINN training +
+# spectrum fetch)? The hosted deploy installs only the light app deps, so
+# these are False there — the dashboard becomes a precomputed showcase.
+CAN_ANALYZE = _have("lightkurve")
+CAN_FETCH_SPECTRA = _have("astroquery")
+
+
 def run_analysis(name, mission, train_pinn, quick, wr_star=None):
     """
     Run the full pipeline for one object, inline, with live status.
@@ -368,7 +375,13 @@ def archive_sidebar_and_load(analyzed):
     """Sidebar pickers for a survey mission (analyzed / confirmed /
     candidates over the archive catalogue); returns the loaded target (or
     renders the pending panel and stops)."""
-    entries, cat_err = load_catalog(st.session_state.mission)
+    # On the hosted demo (no pipeline deps) skip the live archive catalogue
+    # and show only the precomputed targets — every option resolves to a
+    # bundled result, so there are no "run locally" dead-ends.
+    if CAN_ANALYZE:
+        entries, cat_err = load_catalog(st.session_state.mission)
+    else:
+        entries, cat_err = [], None
     entry_by_name = {e["name"]: e for e in entries}
     analyzed_opts = sorted(analyzed)
     confirmed = sorted({e["name"] for e in entries
@@ -432,6 +445,14 @@ def archive_sidebar_and_load(analyzed):
 st.sidebar.title("MAST Data Analytics")
 st.sidebar.caption("Kepler · K2 · TESS · Wolf-Rayet — transits, vetting "
                    "& variability")
+
+if not CAN_ANALYZE:
+    st.sidebar.info(
+        "📡 **Hosted demo** — showing precomputed results. The live "
+        "pipeline (MAST ingestion, PINN training, spectrum fetch) needs "
+        "heavier dependencies and runs only from a local clone — see the "
+        "[README](https://github.com/anand-p-patel/portfolio_and_projects)."
+    )
 
 if not storage.list_targets():
     st.title("No targets processed yet")

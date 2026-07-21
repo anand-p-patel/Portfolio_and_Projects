@@ -16,14 +16,34 @@ Flow (state kept in st.session_state under the "fetch_" prefix):
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 import time
 from datetime import date
+from pathlib import Path
 
 import streamlit as st
 
 from config import PENDING_MATCHES, PROJECT_ROOT, SCRAPE_PROGRESS, RAW_REPORTS_DIR
+
+
+def scraping_available() -> bool:
+    """True only where a Playwright browser is installed — i.e. a local
+    machine after `playwright install chromium`. Hosted platforms like
+    Streamlit Community Cloud have no browser (and PractiScore's anti-bot
+    layer blocks datacenter IPs anyway), so the live-fetch UI is hidden
+    there and the app runs on its bundled corpus instead. Pure filesystem
+    check — no Playwright import, safe inside Streamlit's event loop."""
+    env = os.environ.get("PLAYWRIGHT_BROWSERS_PATH")
+    roots = [Path(env)] if env else []
+    home = Path.home()
+    roots += [
+        home / "AppData" / "Local" / "ms-playwright",   # Windows
+        home / ".cache" / "ms-playwright",              # Linux
+        home / "Library" / "Caches" / "ms-playwright",  # macOS
+    ]
+    return any(r.exists() and any(r.glob("chromium-*")) for r in roots)
 
 # US state codes for the optional filter (dropdown). "All" = no state filter.
 _STATES = [
@@ -89,6 +109,19 @@ def render_fetch_panel(default_lo: date, default_hi: date) -> None:
     """Render the fetch controls + live status. Safe to call with an empty
     database (that's exactly when you'd want to fetch)."""
     st.subheader("⚡ Fetch live data")
+
+    if not scraping_available():
+        # Hosted deploy (no local browser). Show the demo notice, not controls.
+        st.info(
+            "**Live scraping runs on a local machine only.** This hosted demo "
+            "runs on a bundled corpus of real USPSA matches. PractiScore is "
+            "behind Cloudflare and blocks cloud-datacenter IPs, so the "
+            "browser-driven scraper can't run here.\n\n"
+            "Clone the repo and run it locally to pull any date range yourself "
+            "— see the README.",
+            icon=":material/cloud_off:")
+        return
+
     phase = _ss("phase", "idle")
 
     # -- Inputs (always visible) -------------------------------------------

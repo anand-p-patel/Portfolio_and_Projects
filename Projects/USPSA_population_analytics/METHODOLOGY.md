@@ -10,16 +10,19 @@ A pipeline that turns PractiScore match results into two analyses:
 2. **Classification vs classifier difficulty** — for every classifier stage (`99-11`, `03-05`, ...) found in your data, how GM/M/A/B/C/D/U shooters performed, plus a skill-adjusted difficulty score per classifier.
 
 ```
-match_search.py ─► scrape.py ─► data/raw_reports/ ─► parse ─► SQL (db.py) ─► analytics.py ─► dashboard.py
- Algolia index      Playwright    *.json (embedded)   embedded_parser  SQLite/Postgres  pandas+Z    Streamlit
- (find by date)     fetch pages    *.txt  (fallback)  report_parser                     scores      + Plotly
+match_search.py ─► scrape.py ─► data/raw_reports/ ─► ingest.py ─► db.py ─► analytics.py ─► dashboard.py
+ Algolia index      Playwright    *.json (embedded)   parse to    SQLite/     pandas+Z      Streamlit
+ (find by date)     fetch pages    *.txt  (fallback)  contract    Postgres    scores        + Plotly
 ```
 
 Two parsers feed one contract. The **primary** source is the JSON every public
 results page renders into itself (`embedded_parser.py`); the **fallback** is the
 older plain-text "Web Report" for pages that don't embed it (`report_parser.py`).
 Both emit the identical `{match, stages, competitors, scores}` structure, so the
-database and everything downstream never know which was used.
+database and everything downstream never know which was used. `ingest.py` owns
+the parse-and-load step (Phase C) and imports no browser code, so the dashboard
+reuses it to self-populate the database on first launch — no manual load step,
+and a hosted deploy is never blank.
 
 ## Quickstart — no account, no scraping, real data
 
@@ -75,6 +78,24 @@ python scrape.py --start-date 2026-06-01 --end-date 2026-06-30 --discover-only  
 Other flags: `--cap N` (test runs), `--refresh` (re-fetch cached), `--state XX`,
 `--reparse-only` (rebuild the DB from cached files, no browser), and the older
 interactive `python scrape.py` with no dates (you drive the search yourself).
+
+## Deployment: a deliberate local/hosted split
+
+The dashboard deploys to Streamlit Community Cloud with `dashboard.py` as the
+entry point and no extra config. Two design choices make that clean:
+
+- **Zero-config bootstrap.** The database (`data/uspsa.db`) is never committed.
+  On first launch the dashboard calls `ingest.ingest_raw_reports()`, which loads
+  the live corpus if present and otherwise falls back to the bundled
+  `data/sample_reports/` — so a fresh clone or a hosted instance is always
+  populated, never blank.
+- **Scraping is local-only, on purpose.** `fetch_panel.scraping_available()`
+  checks for an installed Playwright browser; a hosted instance has none (and
+  PractiScore's Cloudflare layer blocks datacenter IPs regardless), so the
+  live-fetch UI is replaced with a short notice there. Because `ingest.py`
+  carries no browser dependency, the dashboard imports it freely while the
+  Playwright code stays confined to `scrape.py` / `match_search.py`. The hosted
+  app is the analytics showcase; data collection runs on a real machine.
 
 ## Why it's built this way
 
@@ -155,4 +176,4 @@ Web-report field positions (as corrected here), the classifier code/title list, 
 
 ## Study guide
 
-Since the point of this project is that you can rebuild it: `match_search.py` is the reverse-engineered API client (a public Algolia index, date-window chunking, pure functions with unit tests); `scrape.py` is the asyncio + Playwright material (a headless-then-visible Cloudflare fallback, background progress to a status file); `embedded_parser.py` and `report_parser.py` are two takes on defensive parsing of an undocumented format into one shared contract; `db.py` is SQLAlchemy 2.0 ORM with cascading idempotent upserts; `analytics.py` is where the Z-score normalization lives — read `difficulty_scores` until you could derive it on paper; `dashboard.py` + `fetch_panel.py` are presentation and orchestration only, no math.
+Since the point of this project is that you can rebuild it: `match_search.py` is the reverse-engineered API client (a public Algolia index, date-window chunking, pure functions with unit tests); `scrape.py` is the asyncio + Playwright material (a headless-then-visible Cloudflare fallback, background progress to a status file); `embedded_parser.py` and `report_parser.py` are two takes on defensive parsing of an undocumented format into one shared contract; `ingest.py` is the browser-free seam between files and SQL (idempotent upserts, disk-mirroring prune, the dashboard's bootstrap); `db.py` is SQLAlchemy 2.0 ORM with cascading deletes; `analytics.py` is where the Z-score normalization lives — read `difficulty_scores` until you could derive it on paper; `dashboard.py` + `fetch_panel.py` are presentation and orchestration only, no math.

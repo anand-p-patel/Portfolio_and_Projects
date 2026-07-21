@@ -56,8 +56,6 @@ from urllib.parse import urljoin, urlparse
 
 from playwright.async_api import async_playwright
 
-from sqlalchemy.orm import Session
-
 # -- wrong-folder guard -----------------------------------------------------
 # If Python resolves `config` to another project's config.py (two codebases
 # sharing one folder), stop before importing anything else.
@@ -71,13 +69,12 @@ if getattr(_cfg, "PROJECT_TAG", None) != "uspsa-analytics":
         "(`python check_setup.py` diagnoses folder problems.)")
 # ---------------------------------------------------------------------------
 
-import db
 import embedded_parser
 import match_search
 import report_parser
+from ingest import ingest_paths_quietly, ingest_raw_reports
 from config import (DATA_DIR, DISCOVERY_LOG, MATCH_INDEX, PENDING_MATCHES,
-                    RAW_HTML_DIR, RAW_REPORTS_DIR, SAMPLE_REPORTS_DIR,
-                    SCRAPE_PROGRESS)
+                    RAW_HTML_DIR, RAW_REPORTS_DIR, SCRAPE_PROGRESS)
 
 DEBUG_DIR = DATA_DIR / "debug"
 # Persistent browser profile: your PractiScore login and the
@@ -626,103 +623,8 @@ async def run_automated(start: str, end: str, cap: int, state: str | None,
                 await context.close()
 
 
-# ---------------------------------------------------------------------------
-# Phase C: parse raw reports -> SQL
-# ---------------------------------------------------------------------------
-def _parse_raw_file(path):
-    """Route by extension: .json -> embedded_parser, .txt -> report_parser.
-    Both return the same (parsed, stats) contract."""
-    if path.suffix == ".json":
-        payload = json.loads(path.read_text(encoding="utf-8"))
-        return embedded_parser.parse_embedded(payload)
-    return report_parser.parse_report(
-        path.read_text(encoding="utf-8", errors="replace"))
-
-
-def _raw_files_by_key(source_dir) -> list:
-    """One parse source per match in `source_dir`. If a match has both a
-    .json (embedded) and a .txt (web report), the .json wins — it's the
-    login-free source and carries the same fields."""
-    by_key: dict[str, Path] = {}
-    for path in sorted(source_dir.glob("*.txt")):
-        by_key[path.stem] = path
-    for path in sorted(source_dir.glob("*.json")):
-        if path.stem in by_key:
-            print(f"  [db] note: {path.stem} has both .json and .txt; "
-                  "using .json (embedded)")
-        by_key[path.stem] = path  # json overrides txt
-    return [by_key[k] for k in sorted(by_key)]
-
-
-def _ingest_paths(session, paths, url_by_key, verbose=True) -> tuple[int, int]:
-    """Upsert each report file into the DB. Returns (ok, failed)."""
-    ok = failed = 0
-    for path in paths:
-        key = path.stem
-        try:
-            parsed, stats = _parse_raw_file(path)
-            db.upsert_match(session, parsed, source_key=key,
-                            source_url=url_by_key.get(key))
-            session.commit()
-            ok += 1
-            if verbose:
-                flags = ""
-                if stats.hf_sanity_violations:
-                    flags = f"  ⚠ {stats.hf_sanity_violations} HF sanity flags"
-                print(f"  [db] {parsed['match']['match_date']}  "
-                      f"{parsed['match']['name'][:48]:<48} "
-                      f"{stats.competitors:>3} shooters, "
-                      f"{stats.scores:>4} scores{flags}")
-        except Exception as exc:
-            session.rollback()
-            failed += 1
-            if verbose:
-                print(f"  [db] FAILED {path.name}: {exc}")
-    return ok, failed
-
-
-def ingest_paths_quietly(paths, index: list[dict]) -> None:
-    """Incremental mid-run ingest of just-downloaded files (no prune, quiet).
-    Lets a long run's data appear in the dashboard as it accumulates."""
-    engine = db.get_engine()
-    db.init_db(engine)
-    url_by_key = {r["source_key"]: r["url"] for r in index}
-    with Session(engine) as session:
-        _ingest_paths(session, paths, url_by_key, verbose=False)
-
-
-def ingest_raw_reports(index: list[dict] | None = None, prune: bool = True) -> None:
-    engine = db.get_engine()
-    db.init_db(engine)
-
-    # Ingest YOUR live corpus. Only if it's empty (e.g. a fresh clone with
-    # no scraped data) do we fall back to the bundled sample matches, so a
-    # reviewer still gets a working dashboard with zero setup.
-    files = _raw_files_by_key(RAW_REPORTS_DIR)
-    if not files:
-        files = _raw_files_by_key(SAMPLE_REPORTS_DIR)
-        if files:
-            print(f"[Phase C] No live reports in {RAW_REPORTS_DIR}; "
-                  f"using {len(files)} bundled sample match(es).")
-    if not files:
-        print("[Phase C] No reports found in", RAW_REPORTS_DIR,
-              "or", SAMPLE_REPORTS_DIR)
-        return
-    url_by_key = {r["source_key"]: r["url"] for r in (index or [])}
-
-    with Session(engine) as session:
-        ok, failed = _ingest_paths(session, files, url_by_key)
-        if prune:
-            # Mirror disk: drop any match no longer backed by a report file
-            # (e.g. the bundled samples once you've built a live corpus).
-            removed = db.prune_matches(session, {p.stem for p in files})
-            if removed:
-                session.commit()
-                print(f"  [db] pruned {removed} match(es) no longer on disk.")
-
-    print(f"\n[Phase C] Ingested {ok} matches ({failed} failed).")
-    print(db.summary(engine))
-    print("\nNext:  streamlit run dashboard.py")
+# Phase C (parse raw reports -> SQL) now lives in ingest.py so the dashboard
+# can reuse it for its zero-config bootstrap without importing Playwright.
 
 
 # ---------------------------------------------------------------------------
