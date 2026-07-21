@@ -1,0 +1,11 @@
+# Dashboard (app.py) dependencies — this is what Streamlit Community
+# Cloud installs. The dashboard never imports torch or lightkurve; it
+# serves precomputed results from the bundled SQLite DB, so the cloud
+# build stays small and has no Python-version constraint.
+#
+# For the FULL pipeline (MAST ingestion + PINN training) install
+# requirements-pipeline.txt instead.
+streamlit>=1.57
+pandas
+numpy
+matplotlib
