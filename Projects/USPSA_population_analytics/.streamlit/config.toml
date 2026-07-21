@@ -10,7 +10,3 @@ textColor = "#e2e8f0"
 [browser]
 gatherUsageStats = false
 
-[server]
-# Fixed port so this dashboard never collides with other Streamlit
-# apps on your machine (those default to 8501).
-port = 8531
