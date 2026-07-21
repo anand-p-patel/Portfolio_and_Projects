@@ -415,6 +415,13 @@ visit.
       with Precision/Recall/ROC-AUC and feature importances — learning the
       thresholds the Phase 10 vetting suite hand-tunes; plus unsupervised
       anomaly clustering.
+- [ ] Expand the JWST/HST catalogs — build a browsable Wolf-Rayet
+      spectra list from the VizieR WR catalogue cross-matched against MAST
+      (unlike Kepler/TESS, JWST/HST have no ready-made object table).
+- [ ] Exoplanet-atmosphere cross-reference — for a transiting planet with
+      a JWST/HST transmission spectrum, show the transit fit (size, from
+      BLS+PINN) alongside the atmospheric spectrum (composition: H2O/CO2/
+      CH4 bands). Unifies the photometry and spectroscopy halves.
 - [x] JWST / HST Wolf-Rayet spectral viewer — a separate capability
       (pointed spectroscopy, not light curves; the PINN doesn't apply).
       `pipeline/spectra.py` fetches/parses 1D spectra from MAST (JWST
