@@ -105,12 +105,15 @@ def source_key_for(url: str) -> str:
 
 
 def log_discovery(entry: dict) -> None:
+    """Append one JSON-response record to data/discovery_log.jsonl (endpoint
+    discovery — this is how the Algolia search backend was found)."""
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     with open(DISCOVERY_LOG, "a", encoding="utf-8") as f:
         f.write(json.dumps(entry) + "\n")
 
 
 async def wait_for_enter(prompt: str) -> None:
+    """Await a blocking input() without stalling the asyncio event loop."""
     loop = asyncio.get_running_loop()
     await loop.run_in_executor(None, input, prompt)
 
@@ -119,6 +122,8 @@ async def wait_for_enter(prompt: str) -> None:
 # Phase A: interactive search session (you pick the time frame in the UI)
 # ---------------------------------------------------------------------------
 async def harvest_search_session(context, page) -> list[str]:
+    """Interactive fallback: you drive the search page while this collects every
+    /results/ link that renders, returning the sorted match URLs on ENTER."""
     seen: set[str] = set()
 
     async def on_response(response):
@@ -629,6 +634,8 @@ async def run_automated(start: str, end: str, cap: int, state: str | None,
 
 # ---------------------------------------------------------------------------
 def main() -> None:
+    """CLI entry point: parse args and dispatch to the automated date-range
+    path, the interactive session, or a browser-free reparse."""
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--urls-file", help="text file with one results URL per "

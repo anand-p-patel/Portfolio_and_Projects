@@ -257,13 +257,87 @@ keep on real data: it passes the clean confirmed planets (Kepler-8, -12,
 "re-fold at P/2"). Detection and *vetting* are different jobs; this is
 the second one.
 
+## The physics-informed loss — why it's a PINN, not a black box
+
+A black-box network fitting a transit minimises the data term alone:
+
+    L_data = MSE(F_pred, F_obs)
+
+With enough capacity that finds *a* curve through the points — but nothing
+stops it overfitting noise, drifting the baseline, or producing a dip
+whose depth means nothing physically. The solution space is unconstrained.
+
+The **transit PINN** (Phase 4) adds two physics penalties:
+
+    L_total    =  L_data  +  λ · L_geometry  +  0.1 · L_baseline
+
+    L_data     =  MSE(F_pred, F_obs)            # fit the photometry
+    L_geometry =  ( ΔF_model − depth )²         # geometry law: the model's
+                                                #   realised depth must equal an
+                                                #   explicit parameter; √depth = Rp/R*
+    L_baseline =  mean( (F_oot − 1)² )          # flux conservation: F ≡ 1 out of transit
+
+where `ΔF_model = 1 − mean(F over the transit core)`, `depth` is a
+**learnable physical parameter**, and `F_oot` is the model on the
+out-of-transit grid.
+
+What the penalties actually do — the difference from a black box:
+
+- **L_baseline** pins the out-of-transit model to exactly 1, so the network
+  can't absorb slow drift into the baseline; the only place it can put a
+  dip is a real transit.
+- **L_geometry** ties the realised depth to an explicit parameter, so depth
+  isn't an incidental by-product of the fit but a *constrained, extractable*
+  quantity — and `√depth` is directly the radius ratio Rp/R*. A black-box
+  net gives you a curve; the PINN gives you a physical number with the
+  geometry law `ΔF = (Rp/R*)²` baked in.
+
+The penalties don't touch the weights directly — they reshape the loss
+landscape so its minimum sits in the physically-valid region (baseline
+conserved, depth = a real parameter), which regularises against noise *and*
+makes the physics readable out of the model.
+
+**λ warm-up:** λ = 0 for the first 30% of epochs, then a linear ramp to
+λ_max. Enforcing geometry on an untrained network would anchor the depth to
+garbage; the data term shapes the curve first, then the physics phases in.
+
+**Fourier-feature input** — phase is lifted into a periodic basis before
+the MLP:
+
+    x  →  [ sin(π k x), cos(π k x) ]   for k = 1 … n_freq   (n_freq = 32)
+
+A plain tanh MLP suffers spectral bias and never resolves the narrow (~4%
+of the domain) dip — it plateaus at the MSE of a flat line. The Fourier
+lift makes the sharp feature a linear combination the network reaches
+immediately (Tancik et al. 2020) and respects the fold's periodicity.
+
+**Variability (Phase 7 SHO-PINN)** — the second PINN is informed by the
+stochastically-driven damped harmonic oscillator (the celerite SHO), whose
+equation of motion defines the physics:
+
+    g'' + (ω₀/Q)·g' + ω₀²·g = 0        (g = f − μ)
+
+The coherence — quality factor **Q** — is read from the SHO's
+autocorrelation signature, whose envelope decays at integer-period lags n:
+
+    ACF(nP) ≈ exp(−π n / Q)     ⇒     Q = −π / slope( ln |ACF(nP)| )
+
+(the ODE-residual-in-the-loss form was numerically unstable, so the network
+supplies the physics-informed fit and the SHO physics reads Q off its
+correlation structure — see the variability section). High Q ⇒ coherent
+pulsation; low Q ⇒ stochastic wind.
+
 ## Architecture
 
-    [ Phase 1: Ingestion ] -> [ Phase 2: ETL ] -> [ Phase 3: BLS baseline ]
-                                                       |
-                              [ SQLite results ] <-----+----> [ Phase 4: PINN ]
-                                      |
-                              [ Streamlit dashboard ]
+                     +-- transit ---> ETL detrend -> BLS -> Transit PINN -> Rp/R* -> Vetting -> disposition --+
+    MAST light curves|                                                                                        |--> SQLite + .npz --> dashboard
+     (Kepler/K2/TESS)+-- variability -> Lomb-Scargle ------> SHO-PINN ----> coherence Q ----------------------+
+
+    MAST spectra (JWST/HST) --> fetch + parse 1D --> wavelength / flux + WR emission lines -------------------> dashboard
+
+The two PINNs (Transit, SHO) and the vetting suite are distinct stages;
+JWST/HST spectroscopy is a separate viewer, not a PINN (no model fits a
+spectrum here).
 
 - `pipeline/ingest.py` — downloads light curves from the MAST archive
   (lightkurve), mission-parameterised (`--mission Kepler|K2|TESS`),

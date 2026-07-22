@@ -138,12 +138,15 @@ class StageScore(Base):
 # Engine / session helpers
 # ---------------------------------------------------------------------------
 def get_engine(echo: bool = False):
+    """SQLAlchemy engine for `DATABASE_URL` (Postgres etc.), else the default
+    SQLite file at data/uspsa.db."""
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     url = os.environ.get("DATABASE_URL", DEFAULT_SQLITE_URL)
     return create_engine(url, echo=echo, future=True)
 
 
 def init_db(engine) -> None:
+    """Create any missing tables for the schema (idempotent)."""
     Base.metadata.create_all(engine)
 
 
@@ -226,6 +229,7 @@ def prune_matches(session: Session, keep_keys) -> int:
 
 
 def summary(engine) -> dict:
+    """Corpus counts for the KPI row: matches, entries, scores, classifiers, dates."""
     with Session(engine) as s:
         return {
             "matches": s.scalar(select(func.count(Match.id))) or 0,

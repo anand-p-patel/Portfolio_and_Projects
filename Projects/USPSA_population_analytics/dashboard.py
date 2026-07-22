@@ -113,24 +113,28 @@ h1 { font-size: 2.6rem !important; margin-bottom: 0 !important; }
 
 
 def ribbon_html() -> str:
+    """The GM→U classification color ribbon shown under the page title."""
     segs = "".join(f"<span style='background:{CLASS_COLORS[c]}'></span>"
                    for c in CLASS_ORDER)
     return f"<div class='ribbon'>{segs}</div>"
 
 
 def kpi(col, label: str, value: str, sub: str = "") -> None:
+    """Render one timer-style readout card (label / big value / subtext) in `col`."""
     col.markdown(f"<div class='kpi'><div class='lbl'>{label}</div>"
                  f"<div class='val'>{value}</div>"
                  f"<div class='sub'>{sub}</div></div>", unsafe_allow_html=True)
 
 
 def insight(col, tag: str, html_text: str) -> None:
+    """Render one plain-language insight card (tag + HTML body) in `col`."""
     col.markdown(f"<div class='insight'><div class='tag'>{tag}</div>"
                  f"<div class='txt'>{html_text}</div></div>",
                  unsafe_allow_html=True)
 
 
 def style_fig(fig, height: int | None = None):
+    """Apply the shared dark 'shot-timer' theme to a Plotly figure; returns it."""
     # Plotly.js renders a missing title as the literal string "undefined" once
     # title_font is set; charts labeled by an st.subheader have no plotly title,
     # so pin it to empty to suppress that.
@@ -172,6 +176,7 @@ def load_frames(db_url: str):
 
 
 def clip_dates(df: pd.DataFrame, lo, hi) -> pd.DataFrame:
+    """Return the rows of `df` whose match_date falls within [lo, hi]."""
     if df.empty:
         return df
     m = (df["match_date"].dt.date >= lo) & (df["match_date"].dt.date <= hi)
@@ -221,6 +226,8 @@ def growth_deltas(comp: pd.DataFrame) -> pd.DataFrame:
 # App
 # ---------------------------------------------------------------------------
 def main() -> None:
+    """Build the whole dashboard: sidebar filters, KPI row, and the three tabs
+    (division trends, classifier difficulty, data & methodology)."""
     reg, scores, info = load_frames(str(db.get_engine().url))
 
     st.title("USPSA Population Analytics")

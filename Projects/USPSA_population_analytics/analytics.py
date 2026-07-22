@@ -86,6 +86,8 @@ def classifier_titles() -> pd.DataFrame:
 
 
 def label_codes(codes: pd.Series) -> pd.Series:
+    """Turn classifier codes into 'code · Title' labels; codes with no known
+    title (e.g. classifiers newer than the reference CSV) stay bare."""
     titles = classifier_titles().set_index("code")["title"]
     return codes.map(lambda c: f"{c} · {titles[c]}" if c in titles.index else str(c))
 
@@ -122,6 +124,7 @@ def division_trend(reg: pd.DataFrame,
 
 
 def matches_per_period(reg: pd.DataFrame, freq: str = "MS") -> pd.DataFrame:
+    """Distinct match count per period — the sample-size bar under the trends."""
     if reg.empty:
         return pd.DataFrame(columns=["period", "matches"])
     df = reg.assign(period=reg["match_date"].dt.to_period(

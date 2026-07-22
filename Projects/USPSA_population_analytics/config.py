@@ -80,10 +80,12 @@ DIVISION_SHORT = {
 CLASS_ORDER = ["GM", "M", "A", "B", "C", "D", "U"]  # best -> unclassified
 
 def normalize_classification(raw: str) -> str:
+    """Map a raw classification string to a canonical class (GM…U); unknown → U."""
     c = (raw or "").strip().upper()
     return c if c in CLASS_ORDER else "U"
 
 def normalize_division(raw: str) -> str:
+    """Map a raw division name/alias to a canonical division; unknown → Other."""
     return DIVISION_ALIASES.get((raw or "").strip().lower(), "Other")
 
 # ---------------------------------------------------------------------------

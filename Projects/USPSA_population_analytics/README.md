@@ -69,6 +69,20 @@ The data comes straight out of each match's **public results page** — PractiSc
 
 Deeper dive — the parsing, the scraping strategy, the schema, and how it was validated against 49 real reports (126,629 score rows) — lives in **[METHODOLOGY.md](METHODOLOGY.md)**.
 
+### Project map
+
+Each layer is one focused module, wired in the order above:
+
+| Role | Files |
+|---|---|
+| **Discovery** | `match_search.py` — queries PractiScore's Algolia index for USPSA matches by date |
+| **Scraping** | `scrape.py` — drives the browser, fetches each results page; `fetch_panel.py` — the dashboard's fetch UI |
+| **Parsing** | `embedded_parser.py` (embedded JSON, primary) and `report_parser.py` (Web Report text, fallback) → one shared contract |
+| **Storage** | `ingest.py` — parse-and-load (Phase C); `db.py` — SQLAlchemy schema |
+| **Analytics** | `analytics.py` — participation trends + the skill-adjusted Z-score difficulty |
+| **Presentation** | `dashboard.py` — the Streamlit app (entry point) |
+| **Shared / tools** | `config.py` (constants, paths), `check_setup.py` (preflight), `diagnose_debug.py`, `seed_demo.py` |
+
 ---
 
 ## Troubleshooting

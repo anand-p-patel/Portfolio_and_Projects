@@ -269,6 +269,8 @@ def parse_embedded(data: dict) -> tuple[dict, ParseStats]:
 
 
 def looks_like_results_payload(data: dict) -> bool:
+    """True if `data` holds a populated embedded matchDef (an object with
+    match_shooters) — the guard that rejects old pages' empty JS stubs."""
     return bool(isinstance(data, dict) and data.get("matchDef")
                and (data.get("matchDef") or {}).get("match_shooters") is not None)
 

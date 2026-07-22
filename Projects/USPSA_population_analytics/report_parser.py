@@ -262,6 +262,7 @@ def report_region(text: str) -> str | None:
 
 
 def looks_like_web_report(text: str) -> bool:
+    """True if `text` is a PractiScore Web Report (has the $INFO/Match name header)."""
     head = text[:4000]
     return "$INFO" in head and "Match name" in head.replace("match", "Match")
 

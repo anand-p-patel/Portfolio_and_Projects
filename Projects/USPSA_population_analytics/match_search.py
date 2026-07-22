@@ -100,6 +100,7 @@ def in_range(match_date, start, end) -> bool:
 
 
 def results_url(match_id: str) -> str:
+    """Build the public results-page URL for a match UUID."""
     return RESULTS_URL_TEMPLATE.format(match_id=match_id)
 
 
