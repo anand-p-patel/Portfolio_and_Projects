@@ -18,7 +18,7 @@ data/session_state.json
 data/browser_profile/
 .streamlit/secrets.toml
 
-# Note: data/sample_reports/ (the 3 bundled real matches) and
-# data/reference/ ARE tracked on purpose — they power the
-# credential-free reviewer path (used as a fallback when your live
-# data/raw_reports/ corpus is empty).
+# Note: data/sample_reports/ (the real TX-June-2026 demo corpus) and
+# data/reference/ (classifier titles + web_report_samples/ text-parser
+# reference) ARE tracked on purpose — they power the credential-free
+# reviewer/hosted path (fallback when your live data/raw_reports/ is empty).

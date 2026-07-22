@@ -93,10 +93,11 @@ if not core_fail:
 else:
     warn("skipping database check until the [FAIL] lines above are fixed")
 
-# 5 — report corpora: tracked reviewer samples + your live scraped data
+# 5 — report corpora: tracked demo + your live scraped data
 samples = HERE / "data" / "sample_reports"
-n_samples = len(list(samples.glob("*.txt"))) if samples.exists() else 0
-(ok if n_samples else warn)(f"bundled reviewer samples: {n_samples}")
+n_samples = (len(list(samples.glob("*.json"))) + len(list(samples.glob("*.txt")))
+             if samples.exists() else 0)
+(ok if n_samples else warn)(f"bundled demo matches: {n_samples}")
 live = HERE / "data" / "raw_reports"
 n_live = (len(list(live.glob("*.json"))) + len(list(live.glob("*.txt")))
           if live.exists() else 0)

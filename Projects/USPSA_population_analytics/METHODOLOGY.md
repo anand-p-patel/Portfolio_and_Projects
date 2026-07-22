@@ -26,22 +26,23 @@ and a hosted deploy is never blank.
 
 ## Quickstart — no account, no scraping, real data
 
-Nothing here requires a PractiScore login or any credentials. Three real
-Level I–II USPSA match reports ship in `data/sample_reports/` (used as a
+Nothing here requires a PractiScore login or any credentials. A real month
+of Texas USPSA matches (June 2026) ships in `data/sample_reports/` (used as a
 fallback whenever your live corpus is empty), so the pipeline and dashboard
 run end-to-end on genuine data straight from the download:
 
 ```bash
 pip install -r requirements.txt
 python check_setup.py            # preflight: folder, deps, browser, DB
-python scrape.py --reparse-only  # parse the 3 bundled REAL matches -> SQL
+python scrape.py --reparse-only  # parse the bundled REAL demo -> SQL
 streamlit run dashboard.py       # opens in your browser (http://localhost:8501)
 ```
 
-That's 1,094 competitor entries and 13,568 stage scores — enough to exercise
-every chart. For a wider window of trend data, `python seed_demo.py` builds a
-synthetic 18-month season (clearly labeled synthetic in the dashboard; its
-trends are invented and must not be presented as real).
+That's 32 matches, 1,344 competitor entries, and 7,482 stage scores (0 HF
+sanity flags) — enough to exercise every chart with real trends and classifier
+difficulty. For a synthetic long-horizon season instead, `python seed_demo.py`
+builds an 18-month demo (clearly labeled synthetic in the dashboard; its trends
+are invented and must not be presented as real).
 
 Live scraping is an optional extra step for building your own larger corpus —
 see below. It is never required to review, run, or evaluate this project.

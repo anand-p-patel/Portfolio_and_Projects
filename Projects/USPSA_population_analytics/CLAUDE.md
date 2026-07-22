@@ -26,13 +26,15 @@ scraping-design.md`. Two parse sources / two parsers, one output contract:
 - `*.json` (embedded JSON from a public results page) → `embedded_parser.py`
   — **the primary, login-free path** (see below).
 - `*.txt` (PractiScore "Web Report") → `report_parser.py` — the legacy
-  fallback for pages that don't embed JSON (needs a signed-in session);
-  also the format of the 3 bundled reviewer matches.
-Your live scraped corpus lands in `data/raw_reports/` (gitignored). The 3
-bundled reviewer matches live in `data/sample_reports/` (tracked) and are
-ingested only as a fallback when `raw_reports/` is empty. Ingestion
-mirrors disk: `--reparse-only` prunes DB matches whose report file is
-gone (see `db.prune_matches`).
+  fallback for pages that don't embed JSON (needs a signed-in session).
+Your live scraped corpus lands in `data/raw_reports/` (gitignored). The
+tracked demo corpus in `data/sample_reports/` is a real month of Texas
+USPSA matches (June 2026: 32 matches, 1,344 entries, 7,482 stage scores)
+and is ingested only as a fallback when `raw_reports/` is empty — this is
+what the hosted demo shows. Three Web Report `.txt` files kept as the
+text-parser reference live in `data/reference/web_report_samples/`.
+Ingestion mirrors disk: `--reparse-only` prunes DB matches whose report
+file is gone (see `db.prune_matches`).
 Both return the identical `{match, stages, competitors, scores}` dict, so
 `db.upsert_match` / `analytics` / `dashboard` never know which was used.
 Phase C (parse raw files → SQL) lives in `ingest.py` (no Playwright), so
@@ -48,10 +50,11 @@ Support tools: `check_setup.py` (preflight), `diagnose_debug.py` (reads
 
 WORKING, verified on this machine: the credential-free path. On a fresh
 clone (empty `data/raw_reports/`), `python scrape.py --reparse-only`
-falls back to the 3 bundled `data/sample_reports/` matches (1,094
-entries, 13,568 stage scores) and `streamlit run dashboard.py` renders
-everything at http://localhost:8531. Once you've scraped live matches,
-the same command mirrors your live corpus instead (samples are dropped).
+falls back to the `data/sample_reports/` demo (32 real TX matches, 1,344
+entries, 7,482 stage scores, 0 HF sanity flags) and `streamlit run
+dashboard.py` renders everything at http://localhost:8531. Once you've
+scraped live matches, the same command mirrors your live corpus instead
+(the demo is dropped).
 
 WORKING (2026-07-19): fully automated date-range scraping. Set a date
 range (+ optional state) in the dashboard's "⚡ Fetch live data" panel →
@@ -108,6 +111,11 @@ README "How this was verified"):
   table), never hardcoded. `results.details` has no procedurals: net points
   (`round(HF×Time)`) and procedurals are *reconciled* from hit counts, and
   that reconciliation IS the HF sanity check (must stay 0 across the corpus).
+- **`results.details.APEN` = arbitrary penalty points** (an RO deduction, NOT
+  a ×10 procedural). The reconciliation subtracts it:
+  `HF×Time == gross − APEN − 10·procedurals`. Verified against real TX
+  matches — without subtracting APEN, ~0.1% of rows false-flag the HF check.
+  Do not remove the APEN term.
 - **Old numeric-ID matches do NOT embed these vars** — `/results/new/{id}`
   bounces to search; `/results/html/{id}` is a static table. The extraction
   guard (`matchDef` must be an object with `match_shooters`) rejects the
@@ -210,12 +218,12 @@ cards need ≥4 periods. These resolve as the corpus grows.
 
 After touching parser/db/analytics:
 1. `python -m py_compile *.py`
-2. `python report_parser.py data\sample_reports\162570.txt` — expect 0
-   skipped lines, 0 HF sanity violations. (For the embedded parser:
-   `python embedded_parser.py <saved-page-data>.json`.)
+2. `python report_parser.py data\reference\web_report_samples\162570.txt`
+   — expect 0 skipped lines, 0 HF sanity violations. (For the embedded
+   parser: `python embedded_parser.py <saved-page-data>.json`.)
 3. `$env:DATABASE_URL='sqlite:///C:/temp/t.db'; python scrape.py --reparse-only`
-   — with an empty `data/raw_reports/` this ingests the 3 sample matches
-   (13,568 scores); with a live corpus it mirrors that instead.
+   — with an empty `data/raw_reports/` this ingests the TX demo (32
+   matches, 7,482 scores, 0 HF flags); with a live corpus it mirrors that.
 4. Same env, boot `streamlit run dashboard.py` and click through all 3 tabs.
 5. `python check_setup.py` must end READY.
 After touching `match_search.py`: `python -m pytest test_match_search.py`

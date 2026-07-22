@@ -18,7 +18,7 @@ pip install -r requirements.txt
 streamlit run dashboard.py         # opens in your browser (http://localhost:8501)
 ```
 
-That's it — two commands. The dashboard builds its database from the bundled matches on first launch, so your browser opens to a working app with **3 real matches — 1,094 entries, 13,568 stage scores**. Click through the three tabs and play with the filters in the sidebar.
+That's it — two commands. The dashboard builds its database from the bundled demo on first launch, so your browser opens to a working app with a real month of Texas USPSA data — **32 matches, 1,344 entries, 7,482 stage scores** across June 2026. Click through the three tabs and play with the filters in the sidebar.
 
 > On Windows PowerShell, if `python` isn't found, use the launcher: `py -3` in place of `python`.
 > Prefer to load the database explicitly first? Run `python scrape.py --reparse-only` before launching — the dashboard does the same thing automatically.

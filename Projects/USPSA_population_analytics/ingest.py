@@ -61,9 +61,11 @@ def _ingest_paths(session, paths, url_by_key, verbose=True) -> tuple[int, int]:
             session.commit()
             ok += 1
             if verbose:
+                # ASCII only — a non-ASCII flag char crashes print() on a
+                # Windows cp1252 console, which would abort the ingest.
                 flags = ""
                 if stats.hf_sanity_violations:
-                    flags = f"  ⚠ {stats.hf_sanity_violations} HF sanity flags"
+                    flags = f"  [!] {stats.hf_sanity_violations} HF sanity flags"
                 print(f"  [db] {parsed['match']['match_date']}  "
                       f"{parsed['match']['name'][:48]:<48} "
                       f"{stats.competitors:>3} shooters, "

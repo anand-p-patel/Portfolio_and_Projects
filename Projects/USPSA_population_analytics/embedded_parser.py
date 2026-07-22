@@ -216,6 +216,11 @@ def parse_embedded(data: dict) -> tuple[dict, ParseStats]:
             dd = _int_detail(d, "D")
             m = _int_detail(d, "M")
             ns = _int_detail(d, "NS")
+            # APEN = arbitrary penalty points (an RO deduction that is NOT a
+            # ×10 procedural). Verified against real matches: HF×Time == gross
+            # − APEN − 10·procedurals, so without subtracting APEN these rows
+            # false-flag the HF sanity check.
+            apen = _int_detail(d, "APEN")
             time_s = _to_float(d.get("Time"))
             hf = _to_float(d.get("HF"))
 
@@ -234,7 +239,8 @@ def parse_embedded(data: dict) -> tuple[dict, ParseStats]:
                 # (it requires total_pts truthy).
                 if net_points:
                     gross = (a * pv["A"] + b * pv["B"] + c * pv["C"]
-                             + dd * pv["D"] - m * pv["M"] - ns * pv["NS"])
+                             + dd * pv["D"] - m * pv["M"] - ns * pv["NS"]
+                             - apen)
                     implied = gross - net_points
                     # implied should be a non-negative multiple of 10 (each
                     # procedural = -10). Anything else means the hit counts
@@ -244,7 +250,7 @@ def parse_embedded(data: dict) -> tuple[dict, ParseStats]:
                         stats.hf_sanity_violations += 1
                     else:
                         procedurals = max(0, int(round(implied / 10.0)))
-                        penalties = procedurals * 10
+                        penalties = procedurals * 10 + apen
 
             dnf = (not time_s) and (not net_points) and (not hf)
             scores.append({
