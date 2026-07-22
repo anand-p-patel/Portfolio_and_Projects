@@ -35,7 +35,7 @@ run end-to-end on genuine data straight from the download:
 pip install -r requirements.txt
 python check_setup.py            # preflight: folder, deps, browser, DB
 python scrape.py --reparse-only  # parse the 3 bundled REAL matches -> SQL
-streamlit run dashboard.py       # opens at http://localhost:8531
+streamlit run dashboard.py       # opens in your browser (http://localhost:8501)
 ```
 
 That's 1,094 competitor entries and 13,568 stage scores — enough to exercise
@@ -164,7 +164,7 @@ Three real reports ship in `data/sample_reports/`, so `python scrape.py --repars
 
 Blocked per-match responses are saved to `data/debug/*.html` with a `.json` sidecar (requested URL, HTTP status, final URL). Run `python diagnose_debug.py` to summarize them — it classifies each page (Cloudflare / login wall / 404 / redirect / results page), follows any redirect, and flags files that are secretly valid reports.
 
-**Wrong app opens / familiar filenames from another project.** This project uses ordinary names (`dashboard.py`, `config.py`, `analytics.py`) that other Python projects also use. If it shares a directory with another codebase, `streamlit run dashboard.py` can launch the *other* project's dashboard, and imports can cross-wire between the two. **One project per folder is the rule.** The safeguards: every entry script refuses to run if the `config.py` it finds isn't this project's (clear STOP message instead of a traceback), `python check_setup.py` names any file in the folder that belongs to a different project, and the dashboard is pinned to its own port (8531) so it can't be confused with another Streamlit app on the default 8501.
+**Wrong app opens / familiar filenames from another project.** This project uses ordinary names (`dashboard.py`, `config.py`, `analytics.py`) that other Python projects also use. If it shares a directory with another codebase, `streamlit run dashboard.py` can launch the *other* project's dashboard, and imports can cross-wire between the two. **One project per folder is the rule.** The safeguards: every entry script refuses to run if the `config.py` it finds isn't this project's (clear STOP message instead of a traceback), `python check_setup.py` names any file in the folder that belongs to a different project, and you can pin the dashboard to its own port locally with `streamlit run dashboard.py --server.port 8531` so it can't be confused with another Streamlit app on the default 8501. (The port is deliberately *not* set in `.streamlit/config.toml` — a hard-coded port there breaks Streamlit Community Cloud deploys.)
 
 **Corpus vs. samples.** Your live scraped matches live in `data/raw_reports/` (gitignored); the three bundled reviewer matches live in `data/sample_reports/` (tracked) and are used only as a fallback when the live corpus is empty. `--reparse-only` mirrors disk — it prunes DB matches whose files are gone — so the database always reflects exactly what's in `raw_reports/`.
 

@@ -79,6 +79,25 @@ def _launch(extra_args: list[str]) -> subprocess.Popen:
     return subprocess.Popen(cmd, cwd=str(PROJECT_ROOT))
 
 
+def reset_corpus() -> None:
+    """Delete every scraped match AND empty the database so the next fetch
+    starts from zero — the dashboard then shows only the results you pull, not
+    the leftover demo/test data."""
+    for pattern in ("*.json", "*.txt"):
+        for f in RAW_REPORTS_DIR.glob(pattern):
+            try:
+                f.unlink()
+            except OSError:
+                pass
+    import db
+    from sqlalchemy.orm import Session
+    engine = db.get_engine()
+    db.init_db(engine)
+    with Session(engine) as session:
+        db.prune_matches(session, set())   # drop all matches
+        session.commit()
+
+
 def _uncached_count(matches: list[dict]) -> int:
     """How many of these matches aren't already on disk (so a resumed run's
     ETA is honest)."""
@@ -131,6 +150,11 @@ def render_fetch_panel(default_lo: date, default_hi: date) -> None:
                          key="fetch_state",
                          help="Limit to one state to keep a run small; "
                               "'All' fetches every USPSA match in the range.")
+    fresh = st.checkbox(
+        "Start fresh — show only these dates", value=True, key="fetch_fresh",
+        help="On: clears previously fetched matches first, so the dashboard "
+             "reflects only this pull. Off: adds to your existing corpus "
+             "(for building a larger dataset across several fetches).")
     disabled = phase in ("discovering", "fetching")
 
     if st.button("Find matches", disabled=disabled, key="fetch_find"):
@@ -148,7 +172,7 @@ def render_fetch_panel(default_lo: date, default_hi: date) -> None:
             st.session_state["fetch_phase"] = "discovering"
             st.session_state["fetch_args"] = {"lo": lo.isoformat(),
                                               "hi": hi.isoformat(),
-                                              "state": state}
+                                              "state": state, "fresh": fresh}
             st.rerun()
 
     # -- Discovering -------------------------------------------------------
@@ -171,9 +195,12 @@ def render_fetch_panel(default_lo: date, default_hi: date) -> None:
     # -- Confirm -----------------------------------------------------------
     if phase == "confirm":
         pend = _ss("pending") or {}
+        a = _ss("args") or {}
+        start_fresh = a.get("fresh", True)
         matches = pend.get("matches", [])
         total = len(matches)
-        new = _uncached_count(matches)
+        # A fresh run clears the corpus first, so nothing counts as cached.
+        new = total if start_fresh else _uncached_count(matches)
         cached = total - new
         if total == 0:
             st.warning("No USPSA matches found in that range.")
@@ -182,12 +209,15 @@ def render_fetch_panel(default_lo: date, default_hi: date) -> None:
                 st.rerun()
         else:
             cached_note = f" ({cached} already downloaded)" if cached else ""
-            st.success(f"Found **{total}** USPSA matches — {new} new to "
-                       f"fetch{cached_note}. Est. {_fmt_eta(new)}.")
+            fresh_note = " · replaces existing matches" if start_fresh else ""
+            st.success(f"Found **{total}** USPSA matches — {new} to "
+                       f"fetch{cached_note}. Est. {_fmt_eta(new)}.{fresh_note}")
             c1, c2 = st.columns(2)
             if c1.button(f"Fetch {new}", key="fetch_go", disabled=new == 0):
+                if start_fresh:
+                    reset_corpus()          # wipe old matches first
+                    st.cache_data.clear()
                 _clear_signal_files()
-                a = _ss("args")
                 args = ["--start-date", a["lo"], "--end-date", a["hi"]]
                 if a["state"] != "All":
                     args += ["--state", a["state"]]

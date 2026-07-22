@@ -495,7 +495,13 @@ st.sidebar.selectbox("Mission", missions, key="mission",
                           "spectroscopy of Wolf-Rayet stars.")
 targets = storage.list_targets_for_mission(st.session_state.mission)
 
-mode = st.sidebar.radio("View mode", ["Single target", "Compare targets"])
+# JWST/HST are spectrum-only missions with no light-curve targets to
+# compare, so offer only the (spectrum) single-target view for them.
+if st.session_state.mission in ("JWST", "HST"):
+    mode = "Single target"
+else:
+    mode = st.sidebar.radio("View mode", ["Single target",
+                                          "Compare targets"])
 
 # ======================================================================
 # Single-target view

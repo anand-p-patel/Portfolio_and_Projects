@@ -44,14 +44,28 @@ from analytics import (
 )
 from fetch_panel import render_fetch_panel
 from config import (
-    CANONICAL_DIVISIONS, CLASS_COLORS, CLASS_ORDER, DIVISION_COLORS,
+    CLASS_COLORS, CLASS_ORDER, DIVISION_COLORS,
     DIVISION_SHORT, FOCUS_DIVISIONS,
 )
 
 st.set_page_config(page_title="USPSA Population Analytics",
                    page_icon="🎯", layout="wide")
 
-FREQ = {"Month": "MS", "Quarter": "QS", "Week": "W"}
+FREQ = {"Day": "D", "Week": "W", "Month": "MS", "Quarter": "QS"}
+
+
+def default_gran(span_days: int) -> str:
+    """Pick a sensible granularity for the range so a narrow fetch still
+    shows multiple points (a line needs ≥2) instead of one collapsed dot."""
+    if span_days > 730:
+        return "Quarter"
+    if span_days > 120:
+        return "Month"
+    if span_days > 21:
+        return "Week"
+    return "Day"
+
+
 GRID = "rgba(148,163,184,.14)"
 INK = "#cbd5e1"
 AMBER = "#f59e0b"
@@ -117,6 +131,11 @@ def insight(col, tag: str, html_text: str) -> None:
 
 
 def style_fig(fig, height: int | None = None):
+    # Plotly.js renders a missing title as the literal string "undefined" once
+    # title_font is set; charts labeled by an st.subheader have no plotly title,
+    # so pin it to empty to suppress that.
+    if fig.layout.title.text is None:
+        fig.update_layout(title_text="")
     fig.update_layout(
         paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
         font=dict(color=INK, size=13),
@@ -138,12 +157,15 @@ def style_fig(fig, height: int | None = None):
 def load_frames(db_url: str):
     engine = db.get_engine()
     db.init_db(engine)
-    # Zero-config bootstrap: on a fresh clone or a hosted deploy the database
-    # isn't committed, so an empty DB self-populates from whatever reports are
-    # on disk — the bundled sample matches when there's no scraped corpus.
+    # Zero-config bootstrap: auto-load the bundled demo matches only where you
+    # can't scrape (a hosted deploy or a machine without the browser), so the
+    # demo is never blank. On a scraping-capable machine an empty DB means
+    # "start fresh" — leave it empty so the dashboard shows only what you fetch.
     if (db.summary(engine).get("matches") or 0) == 0:
-        import ingest
-        ingest.ingest_raw_reports(prune=False, verbose=False)
+        from fetch_panel import scraping_available
+        if not scraping_available():
+            import ingest
+            ingest.ingest_raw_reports(prune=False, verbose=False)
     return (registrations_frame(engine),
             classifier_scores_frame(engine),
             db.summary(engine))
@@ -164,7 +186,7 @@ def field_composition(reg: pd.DataFrame, divisions: list[str],
         return pd.DataFrame(columns=["period", "bucket", "share"])
     df = reg.assign(
         period=reg["match_date"].dt.to_period(
-            {"MS": "M", "QS": "Q", "W": "W"}.get(freq, "M")).dt.start_time,
+            {"D": "D", "W": "W", "MS": "M", "QS": "Q"}.get(freq, "M")).dt.start_time,
         bucket=reg["division"].where(reg["division"].isin(divisions), "Other"),
     )
     counts = df.groupby(["period", "bucket"]).size().rename("n").reset_index()
@@ -224,9 +246,14 @@ def main() -> None:
             st.info("Pick both ends of the date range.")
             st.stop()
         lo, hi = picked
-        gran = st.radio("Granularity", list(FREQ), horizontal=True)
-        divisions = st.multiselect("Divisions", CANONICAL_DIVISIONS,
-                                   default=FOCUS_DIVISIONS)
+        gran = st.radio("Granularity", list(FREQ), horizontal=True,
+                        index=list(FREQ).index(default_gran((hi - lo).days)))
+        # The four mainstream handgun divisions are the analysis scope. Pills
+        # (not a dropdown) so selecting all doesn't leave a "No results" menu
+        # hanging open — the chips are the whole control, always visible.
+        divisions = st.pills("Divisions", FOCUS_DIVISIONS,
+                             selection_mode="multi", default=FOCUS_DIVISIONS)
+        divisions = divisions or FOCUS_DIVISIONS  # empty selection = all four
         include_dq = st.toggle("Count DQ'd shooters in participation",
                                value=True,
                                help="A DQ'd shooter still showed up — "
@@ -236,12 +263,16 @@ def main() -> None:
         st.subheader("Classifier thresholds")
         min_n = st.slider("Min runs per (classifier × class) cell", 3, 30, 5)
         min_classes = st.slider("Min classes per classifier", 2, 6, 3)
-        div_opts = sorted(scores["division"].unique()) if not scores.empty else []
-        cls_divs = st.multiselect(
-            "Divisions in classifier analysis", div_opts, default=div_opts,
-            help="Hit factors are equipment-sensitive: an Open gun and a "
-                 "revolver on the same stage aren't comparable. Narrow this "
-                 "to keep the difficulty math within like divisions.")
+        present = set(scores["division"].unique()) if not scores.empty else set()
+        cls_opts = [d for d in FOCUS_DIVISIONS if d in present]
+        cls_divs = st.pills(
+            "Divisions in classifier analysis", cls_opts,
+            selection_mode="multi", default=cls_opts,
+            help="Difficulty pools hit factors across the selected divisions, "
+                 "so keep it to comparable ones. These four handgun divisions "
+                 "shoot at similar speeds; mixing in a slower division would "
+                 "distort the z-scores.")
+        cls_divs = cls_divs or cls_opts  # empty selection = all four
         if st.button("Reload data"):
             load_frames.clear()
             st.rerun()
@@ -307,6 +338,13 @@ def main() -> None:
     with tab_trend:
         if trend.empty:
             st.warning("No registrations for the selected divisions.")
+        elif trend["period"].nunique() < 2:
+            st.info(
+                f"Only one {gran.lower()} of data in this range — a trend line "
+                "needs at least two points in time. Switch the granularity "
+                "above to something finer, or select a wider date range. "
+                "(The headline numbers and the classifier analysis don't need "
+                "a time span — those are complete.)")
         else:
             fig = px.line(trend, x="period", y="shooters", color="division",
                           markers=True, color_discrete_map=DIVISION_COLORS,
@@ -365,6 +403,10 @@ def main() -> None:
                          labels={"difficulty": "Difficulty (−mean z)",
                                  "label": ""})
             bar.update_layout(coloraxis_showscale=False)
+            # Classifier codes like "25-08" look like dates to Plotly's axis
+            # auto-detection; pin the axis to categorical so they render as
+            # labels, not a time axis.
+            bar.update_yaxes(type="category")
             st.plotly_chart(style_fig(bar, max(380, 30 * len(d) + 120)),
                             width="stretch")
 
@@ -374,6 +416,8 @@ def main() -> None:
             hm = px.imshow(wide, text_auto=".2f", aspect="auto",
                            color_continuous_scale="Viridis",
                            labels=dict(x="", y="", color="Mean HF"))
+            hm.update_yaxes(type="category")  # codes aren't dates (see above)
+            hm.update_xaxes(type="category")
             st.plotly_chart(style_fig(hm, max(380, 30 * len(wide) + 140)),
                             width="stretch")
             st.caption("Read a row left→right for the skill gradient on one "

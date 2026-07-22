@@ -10,3 +10,8 @@ textColor = "#e2e8f0"
 [browser]
 gatherUsageStats = false
 
+# NOTE: server.port is intentionally NOT set here. Streamlit Community Cloud
+# assigns its own port, and hard-coding one breaks the hosted deploy ("Error
+# running app"). To pin the local port (e.g. to avoid colliding with another
+# Streamlit app), pass it on the command line instead:
+#     streamlit run dashboard.py --server.port 8531

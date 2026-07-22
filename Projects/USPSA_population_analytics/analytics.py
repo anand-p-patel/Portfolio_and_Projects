@@ -110,7 +110,7 @@ def division_trend(reg: pd.DataFrame,
         return pd.DataFrame(columns=["period", "division", "shooters", "share"])
 
     df = df.assign(period=df["match_date"].dt.to_period(
-        {"MS": "M", "QS": "Q", "W": "W"}.get(freq, "M")).dt.start_time)
+        {"D": "D", "W": "W", "MS": "M", "QS": "Q"}.get(freq, "M")).dt.start_time)
 
     totals = df.groupby("period").size().rename("total")
     counts = (df[df["division"].isin(divisions)]
@@ -125,7 +125,7 @@ def matches_per_period(reg: pd.DataFrame, freq: str = "MS") -> pd.DataFrame:
     if reg.empty:
         return pd.DataFrame(columns=["period", "matches"])
     df = reg.assign(period=reg["match_date"].dt.to_period(
-        {"MS": "M", "QS": "Q", "W": "W"}.get(freq, "M")).dt.start_time)
+        {"D": "D", "W": "W", "MS": "M", "QS": "Q"}.get(freq, "M")).dt.start_time)
     return (df.groupby("period")["match_id"].nunique()
               .rename("matches").reset_index())
 

@@ -5,7 +5,7 @@ pandas>=2.0
 numpy>=1.26
 
 # Dashboard
-streamlit>=1.32
+streamlit>=1.40        # st.pills (multi-select chips) needs >=1.40
 plotly>=5.18
 
 # Optional: real PostgreSQL backend instead of the default SQLite file

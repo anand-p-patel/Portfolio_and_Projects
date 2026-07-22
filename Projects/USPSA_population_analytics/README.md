@@ -15,7 +15,7 @@ Real USPSA match data ships with the project, so everything runs end-to-end stra
 
 ```bash
 pip install -r requirements.txt
-streamlit run dashboard.py         # opens http://localhost:8531
+streamlit run dashboard.py         # opens in your browser (http://localhost:8501)
 ```
 
 That's it — two commands. The dashboard builds its database from the bundled matches on first launch, so your browser opens to a working app with **3 real matches — 1,094 entries, 13,568 stage scores**. Click through the three tabs and play with the filters in the sidebar.
