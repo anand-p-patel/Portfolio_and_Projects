@@ -1,5 +1,7 @@
 # MAST Data Analytics Engine
 
+Demo dashboard: https://zkpbhftuksemqomavw8e4z.streamlit.app/
+
 An end-to-end analytics engine for MAST data — Kepler / K2 / TESS time-series photometry, plus JWST / HST spectroscopy of Wolf-Rayet stars. It:
 
 - **measures exoplanet sizes** — removes instrument drift, finds transits with Box Least Squares, and fits the planet-to-star radius ratio two ways (the classical BLS box and a Physics-Informed Neural Network);

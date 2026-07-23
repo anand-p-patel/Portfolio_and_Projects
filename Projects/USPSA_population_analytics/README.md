@@ -1,4 +1,5 @@
 # USPSA Population Analytics
+Demo dashboard: https://dashboardpy-w4tyhzptkdjqizn9fzjgsq.streamlit.app/
 
 Turn public [PractiScore](https://practiscore.com) match results into two questions worth answering:
 
