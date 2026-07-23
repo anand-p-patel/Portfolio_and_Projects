@@ -46,7 +46,7 @@ def _phase_days(time, period, t0):
     return ((time - t0 + 0.5 * period) % period) - 0.5 * period
 
 
-def vet_lightcurve(time, flux, period, t0, duration):
+def vet_lightcurve(time, flux, period, t0, duration, bls_rp_over_rstar=None):
     """
     Run the light-curve false-positive tests and return a report dict:
 
@@ -55,6 +55,15 @@ def vet_lightcurve(time, flux, period, t0, duration):
         secondary_depth, secondary_snr,
         flags (list of human-readable strings),
         disposition ("candidate" | "false_positive" | "low_snr")
+
+    bls_rp_over_rstar (optional): the box-fit Rp/R* from run_bls. The
+    MAX_PLANET_RATIO "too big to be a planet" test checks BOTH this and the
+    ratio recomputed here from the folded depth, and fires if EITHER exceeds
+    the cap. The two can disagree badly when the stored period is itself an
+    eclipse harmonic — the in-transit window then lands off the true eclipse
+    and the recomputed depth collapses, hiding a clearly stellar companion
+    (Kepler-16: BLS 0.19 vs recomputed 0.009). Passing the BLS ratio makes
+    the check reachable for exactly that case.
     """
     time = np.asarray(time, dtype=float)
     flux = np.asarray(flux, dtype=float)
@@ -124,9 +133,12 @@ def vet_lightcurve(time, flux, period, t0, duration):
                           f"{secondary_frac * 100:.0f}% of primary) — a "
                           "self-luminous stellar companion"))
 
-    if np.isfinite(rp_over_rstar) and rp_over_rstar > MAX_PLANET_RATIO:
+    ratios = [r for r in (rp_over_rstar, bls_rp_over_rstar)
+              if r is not None and np.isfinite(r)]
+    max_ratio = max(ratios) if ratios else float("nan")
+    if np.isfinite(max_ratio) and max_ratio > MAX_PLANET_RATIO:
         flags.append(("fp",
-                      f"companion too large (Rp/R* = {rp_over_rstar:.2f}) — "
+                      f"companion too large (Rp/R* = {max_ratio:.2f}) — "
                       "a stellar radius ratio, not planetary"))
 
     severities = {sev for sev, _ in flags}

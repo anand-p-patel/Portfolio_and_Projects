@@ -97,6 +97,14 @@ def run_bls(time, flux, min_period: float = 0.5, max_period: float = 15.0,
                 every sub-position holds a real transit, adopt the smallest
                 such fundamental and re-refine. See _is_subharmonic.
 
+    Scope of Stage 3: it corrects only the too-LONG direction — a peak at
+    k·P_true, recovered as period/k. It does NOT test super-harmonics
+    k·period, so a peak that is itself a *sub*-harmonic of a longer signal
+    is left unchanged. That is deliberate: those longer fundamentals are
+    typically outside [min_period, max_period] anyway. Kepler-16 (13.69 d =
+    1/3 of the 41 d stellar eclipse) and Kepler-9 (9.61 d = 1/2 of 19.24 d)
+    are exactly this case — correctly left alone rather than mis-corrected.
+
     Bounded (~45k evaluations total), fast, and cadence-agnostic.
 
     Returns
@@ -132,6 +140,15 @@ def run_bls(time, flux, min_period: float = 0.5, max_period: float = 15.0,
         for k in range(kmax, 1, -1):
             Pc = period / k
             if Pc < min_period:
+                continue
+            # Sub-transit windows sit Pc apart with half-width 0.5·duration;
+            # if Pc is not comfortably larger than the window, they overlap
+            # and every phase reads as in-transit. min_period (0.5 d) and the
+            # 0.30 d duration cap normally keep them apart, but that invariant
+            # otherwise lives implicitly in two unrelated constants — enforce
+            # it here so the sub-harmonic test is never run on overlapping
+            # windows.
+            if Pc <= 2.0 * duration:
                 continue
             if _is_subharmonic(time, flux, period, t0, duration, k):
                 lo2 = max(Pc - 5 * step, 1e-3)

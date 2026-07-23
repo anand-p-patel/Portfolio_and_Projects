@@ -65,6 +65,19 @@ HARNESS_TARGETS = {
         period_days=1.3, t0=0.7, duration_days=0.08, depth=0.010,
         teff=5500.0, stellar_radius=0.95, n_days=1400.0, seed=5,
     ),
+    # A SYMMETRIC eclipsing binary — near-equal primary and secondary
+    # eclipses — which is the *most common* real EB morphology, and the one
+    # the single-period vetting misses: BLS folds it at P/2 (primary and
+    # secondary alternate and look identical at half the period), the
+    # odd/even signal vanishes, and it slips through as "candidate". Unlike
+    # SYNTH-EB (which omits the secondary so it is cleanly rejected), this
+    # target documents the KNOWN GAP — the harness asserts the *desired*
+    # rejection and records the result as an expected failure (xfail).
+    "SYNTH-EB-SEC": dict(
+        kind="eb", period_days=2.6, t0=0.6, duration_days=0.10,
+        odd_depth=0.010, even_depth=0.010, secondary_depth=0.009,
+        teff=6000.0, stellar_radius=1.1, n_days=30.0, seed=13,
+    ),
 }
 
 # Backward-compatible alias: the primary demo target's ground truth.

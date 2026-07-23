@@ -183,7 +183,8 @@ def render_vetting(data, bls):
     live from the stored light curve (centroid, if any, comes from the DB)."""
     v = vet_mod.vet_lightcurve(data["time"], data["flux"],
                                bls["period_days"], bls["t0"],
-                               bls["duration_days"])
+                               bls["duration_days"],
+                               bls_rp_over_rstar=bls.get("rp_over_rstar"))
     disp = v["disposition"]
     st.subheader("Vetting report")
     banner = {"candidate": st.success, "review": st.warning,

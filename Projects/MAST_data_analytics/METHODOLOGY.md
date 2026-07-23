@@ -183,17 +183,26 @@ The synthetic path used to print truth beside recovered and never compare
 them: a harness built to be read, not to fail. `run_pipeline.py --self-test`
 now asserts. Per synthetic target it checks recovered vs known truth against
 per-quantity tolerances (period 0.5 %, depth 10 %, Rp/R* 5 %, duration one
-BLS grid cell), and it adds the two stress cases the old demo set never
+BLS grid cell), and it adds three stress cases the old demo set never
 covered:
 
 - **SYNTH-EB** — an eclipsing binary that *must* be rejected. It has
   unequal odd/even eclipse depths and no visible secondary, so BLS finds its
   true period and the odd/even test condemns it (135σ → `false_positive`).
-  It is the one negative control: proof the vetting cascade can say *no*,
-  not just *candidate*. (A comparable secondary makes BLS fold the EB at
-  P/2, where the odd/even signal dilutes below threshold and the binary
-  slips through — a real false-negative of single-period vetting, the same
-  class of miss as Kepler-16.)
+  It is the positive negative-control: proof the vetting cascade can say
+  *no*, not just *candidate*.
+- **SYNTH-EB-SEC** — a *symmetric* eclipsing binary (near-equal primary and
+  secondary), which is the **most common** real EB morphology. It *should*
+  be rejected, but BLS folds it at P/2 — primary and secondary alternate and
+  look identical at half the period — so the odd/even signal vanishes and it
+  slips through as `candidate`. This is a real false-negative of
+  single-period vetting (the same class of miss as Kepler-16). Rather than
+  hide it behind SYNTH-EB's no-secondary shape, the harness runs it as an
+  **expected failure (xfail)**: it asserts the *desired* `false_positive`,
+  records the miss as a documented known gap, and — because the assertion is
+  for the correct behaviour — would flip to a loud `XPASS` the day the
+  vetting is fixed. A comment saying a test avoids a known failure is a bug
+  report; this is the test.
 - **SYNTH-ALIAS** — a 1.3 d transit on a real-Kepler-length (1400 d)
   baseline. The coarse grid smears its fundamental, BLS locks onto the 2×
   harmonic, and the harness asserts on *period* — so it fails on the
@@ -201,10 +210,12 @@ covered:
   regression test for the fix.
 
 The harness runs entirely in memory, writes nothing to the bundled database,
-and exits non-zero on any failure — a single command safe to run in CI:
+and exits non-zero on any *unexpected* result — documented gaps (xfail) stay
+green, so it is safe to run in CI:
 
 ```bash
-python run_pipeline.py --self-test      # → 11/11 checks passed.
+python run_pipeline.py --self-test
+# → 11/11 checks passed, 1 known gap(s) (xfail).
 ```
 
 The broader point is the honest one: the original validation wasn't
@@ -335,6 +346,13 @@ stored via `--vet`:
 - **Secondary eclipse** — a dip at phase 0.5. A *deep* one (30–70% of the
   primary) is a stellar companion; an *equal* one (>70%) means the fold
   is at 2× the true period.
+- **Radius-ratio cap** — a dip too deep to be a planet (Rp/R* > 0.18) is a
+  star. The check reads **both** the BLS box-fit ratio and the ratio
+  recomputed from the fold, and fires if *either* exceeds the cap. Reading
+  both matters: when the period is an eclipse harmonic the in-transit
+  window lands off the true eclipse and the recomputed depth collapses, so
+  the box-fit ratio is the one that still tells the truth (Kepler-16: BLS
+  0.19 vs recomputed 0.009).
 - **Centroid motion** (`--centroid`, needs pixel data) — an in-transit
   shift of the flux centroid means the eclipse is on a different star in
   the aperture: a background-eclipsing-binary blend.
@@ -343,11 +361,13 @@ Each test gates on **both** statistical significance **and** relative
 size, so a formally-significant but physically negligible effect on a
 high-SNR light curve doesn't condemn a real planet. The suite earns its
 keep on real data: it passes the clean confirmed planets (Kepler-8, -12,
--15, TOI-132) and flags the problem cases for the right reason —
+-13, -15, TOI-132) and flags the problem cases for the right reason —
 **TOI-1074.01** (odd 1149 ppm vs even −54 ppm, 19σ → eclipsing binary at
-2× the period), and our aliased Kepler-10/-17 fits (equal secondary →
-"re-fold at P/2"). Detection and *vetting* are different jobs; this is
-the second one.
+2× the period), and **Kepler-16**, the circumbinary system whose deep
+stellar eclipse trips the radius-ratio cap (Rp/R* 0.19 → *false positive*,
+correctly — it had previously slipped through as a candidate because the
+recomputed depth alone missed it). Detection and *vetting* are different
+jobs; this is the second one.
 
 ## The physics-informed loss — why it's a PINN, not a black box
 

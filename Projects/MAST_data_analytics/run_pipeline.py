@@ -43,7 +43,8 @@ def vet_target(target_id, mission, time, flux, result, run_centroid=False):
     from pipeline.vetting import (vet_lightcurve, vet_centroid,
                                   DISPOSITION_LABEL)
     vet = vet_lightcurve(time, flux, result["period_days"],
-                         result["t0"], result["duration_days"])
+                         result["t0"], result["duration_days"],
+                         bls_rp_over_rstar=result.get("rp_over_rstar"))
     if run_centroid:
         c = vet_centroid(target_id, mission, result["period_days"],
                          result["t0"], result["duration_days"])
