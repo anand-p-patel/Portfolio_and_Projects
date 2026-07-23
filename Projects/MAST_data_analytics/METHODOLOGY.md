@@ -73,22 +73,22 @@ quarter, with a two-stage BLS (see below). Reproduce with
 |--------|-----------------|-----|-------|------|--------|
 | Kepler-8 | 0.0979 | 0.0915 | -6.6 | 0.0939 | -4.1 |
 | Kepler-9 | 0.0793 | 0.0391 | -50.8 | 0.0536 | -32.4 |
-| Kepler-10 | 0.0300 | 0.0125 | -58.4 | 0.0463 | +54.0 |
+| Kepler-10 | 0.0300 | 0.0124 | -58.8 | 0.0265 | -11.8 |
 | Kepler-11 | 0.0361 | 0.0260 | -27.9 | 0.0498 | +38.2 |
 | Kepler-12 | 0.1215 | 0.1183 | -2.7 | 0.1236 | +1.7 |
-| Kepler-13 | — | 0.0647 | — | 0.0686 | — |
+| Kepler-13 | 0.0648 | 0.0646 | -0.2 | 0.0661 | +2.0 |
 | Kepler-14 | 0.0570 | 0.0444 | -22.1 | 0.0493 | -13.5 |
 | Kepler-15 | 0.0994 | 0.1006 | +1.2 | 0.1038 | +4.4 |
 | Kepler-16 | 0.1194 | 0.1930 | +61.7 | 0.2101 | +76.0 |
-| Kepler-17 | 0.1332 | 0.1320 | -0.9 | 0.1420 | +6.6 |
+| Kepler-17 | 0.1332 | 0.1334 | +0.2 | 0.1398 | +5.0 |
 
-**The headline: on the four geometrically clean, single-transit hosts —
-Kepler-8, -12, -15, -17 — the pipeline agrees with published Rp/R* to a
-few percent** (BLS mean |Δ| 2.8%, PINN 4.2%; Kepler-17 BLS −0.9%,
-Kepler-15 +1.2%, Kepler-12 −2.7%). These are the targets whose signal
-actually matches the single-transit model the pipeline assumes, and there
-the agreement is quantitative. Every larger deviation in the table has a
-specific, identifiable astrophysical cause — none is estimator noise:
+**The headline: on the five geometrically clean, single-transit hosts —
+Kepler-8, -12, -13, -15, -17 — the pipeline agrees with published Rp/R* to
+a few percent** (BLS mean |Δ| 2.2%, PINN 3.4%; Kepler-13 −0.2%, Kepler-17
++0.2%, Kepler-15 +1.2%, Kepler-12 −2.7%). These are the targets whose
+signal actually matches the single-transit model the pipeline assumes, and
+there the agreement is quantitative. Every larger deviation in the table
+has a specific, identifiable astrophysical cause — none is estimator noise:
 
 - **Kepler-14 (−22%)** — the host is a close binary; a near-equal
   companion dilutes the transit, so the *measured* depth is genuinely
@@ -101,8 +101,12 @@ specific, identifiable astrophysical cause — none is estimator noise:
 - **Kepler-16 (+62%)** — a *circumbinary* planet. BLS locks onto the deep
   stellar eclipse of the binary, not the planet, hence the ~2×
   overestimate. An expected, understood failure mode.
-- **Kepler-13 (—)** — the archive hostname is "Kepler-13 A", so the
-  exact-match query returns no row.
+
+(Kepler-13 b — a hot Jupiter in a binary — is absent from the archive's
+`pscomppars` table, so `validate.py` falls back to the KOI cumulative table
+for it; there it validates cleanly at −0.2%, one of the tightest rows in
+the table. Its period was one of the three harmonic aliases the next
+section corrects: 5.291 d → 1.7636 d.)
 
 ### The period-resolution fix that made the full mission usable
 
@@ -122,6 +126,94 @@ transit stacks coherently. This is bounded and fast, and it is what turns
 the full-mission fit from smeared to accurate — Kepler-15 0.060 → 0.101,
 Kepler-12 0.083 → 0.118. Multi-quarter stitching was the right idea; it
 just surfaced a period-precision requirement the old wrapper had masked.
+
+### Harmonic aliasing — the bug a radius-only check couldn't see
+
+Resolving the period finely is necessary but not sufficient: BLS can pin a
+period precisely and still pin the *wrong* one. Box-least-squares power at
+an integer harmonic k·P_true rivals the power at the fundamental, and on a
+long baseline the coarse grid smears the shorter true period more than the
+harmonic — so the search settles on k·P_true. An external code review
+prompted a direct check against the archive's published *periods* (not just
+radii), and three targets turned out to be exact harmonic aliases:
+
+| Target | Stored period | True period | Alias |
+|--------|---------------|-------------|-------|
+| Kepler-10 | 5.0250 d | 0.8375 d | 6× |
+| Kepler-13 | 5.2908 d | 1.7636 d | 3× |
+| Kepler-17 | 2.9714 d | 1.4857 d | 2× |
+
+The matches are exact to parts in 10⁶ (Kepler-13: 3 × 1.763588 = 5.290764
+vs stored 5.290761), so these are arithmetic identities, not coincidences.
+
+Why it went unnoticed is the sharpest lesson here: **`validate.py` compared
+only Rp/R*, and Rp/R* is nearly blind to a period alias.** At a 2× alias
+the even-numbered transits still stack at phase 0 and the box still measures
+the right depth, so Kepler-17 reported a −0.9% radius agreement while its
+period was a clean factor of two wrong. A validation that checks only the
+headline quantity will bless a broken one. `validate.py` now also fetches
+`pl_orbper` and reports, per target, the nearest simple-harmonic
+relationship (`period_check`) with a fractional residual — a 6× at residual
+3e-6 is an alias; Kepler-16's 1/8× at residual 0.52 correctly *declines* to
+call anything a match.
+
+**The fix (`run_bls` Stage 3, harmonic disambiguation).** After the
+two-stage search finds a peak period P, test each sub-harmonic P/k
+(k = 2…8): fold at P and ask whether *every* sub-position j·P/k holds a
+real, comparable-depth, significant transit. If they do, the fundamental is
+P/k — adopt the smallest such period and re-refine. A correctly-recovered
+target fails this at every k (the intermediate phases are empty baseline),
+so clean targets are untouched. On the real stored arrays it recovers
+Kepler-10 → 0.8375, -13 → 1.7636, -17 → 1.4857 and leaves the other seven
+Kepler targets, both TESS targets, and both synthetic demos unchanged.
+Kepler-16 is deliberately left at 13.69 d: its signal is the binary's
+stellar eclipse and the real circumbinary planet (~229 d) lies outside the
+search grid entirely — an alias with no in-grid fundamental to recover,
+correctly flagged rather than fabricated. (The validation table above is
+post-fix — Kepler-10/13/17 were reprocessed through the corrected search
+with `python run_pipeline.py --targets Kepler-10 Kepler-13 Kepler-17 --pinn
+--vet`; regenerate it any time with `validate.py --range Kepler 8 17
+--markdown`. Note how the `resid` column in a `validate.py` run now reads
+~1e-6 at `1x` for all three, versus the clean harmonic ratios they showed
+before.)
+
+### The validation harness — a self-test that can fail
+
+The synthetic path used to print truth beside recovered and never compare
+them: a harness built to be read, not to fail. `run_pipeline.py --self-test`
+now asserts. Per synthetic target it checks recovered vs known truth against
+per-quantity tolerances (period 0.5 %, depth 10 %, Rp/R* 5 %, duration one
+BLS grid cell), and it adds the two stress cases the old demo set never
+covered:
+
+- **SYNTH-EB** — an eclipsing binary that *must* be rejected. It has
+  unequal odd/even eclipse depths and no visible secondary, so BLS finds its
+  true period and the odd/even test condemns it (135σ → `false_positive`).
+  It is the one negative control: proof the vetting cascade can say *no*,
+  not just *candidate*. (A comparable secondary makes BLS fold the EB at
+  P/2, where the odd/even signal dilutes below threshold and the binary
+  slips through — a real false-negative of single-period vetting, the same
+  class of miss as Kepler-16.)
+- **SYNTH-ALIAS** — a 1.3 d transit on a real-Kepler-length (1400 d)
+  baseline. The coarse grid smears its fundamental, BLS locks onto the 2×
+  harmonic, and the harness asserts on *period* — so it fails on the
+  un-fixed search and passes once Stage-3 disambiguation is in. It is the
+  regression test for the fix.
+
+The harness runs entirely in memory, writes nothing to the bundled database,
+and exits non-zero on any failure — a single command safe to run in CI:
+
+```bash
+python run_pipeline.py --self-test      # → 11/11 checks passed.
+```
+
+The broader point is the honest one: the original validation wasn't
+*absent* — `validate.py` queried a real external archive and printed a MAE
+summary — it was too *narrow*, checking one quantity (Rp/R*) on a target set
+whose ground-truth members were all geometrically easy. Widening it to check
+period, and adding a target that should be rejected and one that should be
+un-aliased, is what turns "the pipeline happened to work" into "here is how
+I know it works, and here is what it still can't do."
 
 ### BLS vs PINN, honestly
 

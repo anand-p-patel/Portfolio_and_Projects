@@ -13,6 +13,11 @@ radius (solar radii) separately, so we reconstruct the ratio:
     Rp/R* = R_planet / R_star           (same physical units)
           = (pl_rade * R_earth) / (st_rad * R_sun)
 
+It also fetches pl_orbper and reports, per target, the nearest
+simple-harmonic relationship between the measured BLS period and any
+published planet's period — the check that catches BLS locking onto an
+integer harmonic (k x P) or sub-harmonic (P / k) of the true period.
+
 Usage
 -----
     python validate.py --range Kepler 8 17
@@ -47,20 +52,38 @@ def expand_range(prefix, start, end):
     return [f"{prefix}-{i}" for i in range(start, end + 1)]
 
 
+def _tap(query, timeout=30):
+    """Run one ADQL query against the archive TAP endpoint; return rows."""
+    url = f"{ARCHIVE_TAP}?query={urllib.parse.quote(query, safe='')}&format=json"
+    with urllib.request.urlopen(url, timeout=timeout) as resp:
+        return json.loads(resp.read().decode())
+
+
 def query_archive(hostname, timeout=30):
     """
     Return published planets for one host as a list of dicts:
-        {"pl_name", "rp_over_rstar"}   (rp_over_rstar may be None)
+        {"pl_name", "pl_orbper", "rp_over_rstar"}   (values may be None)
 
     Uses pl_rade when present, falling back to pl_radj. Raises on a
     network/HTTP error so the caller can report the target as unchecked
     rather than silently wrong.
+
+    Primary source is pscomppars. Some Kepler planets are absent from it —
+    e.g. Kepler-13 b, a hot Jupiter in a binary — but present in the KOI
+    cumulative table, so for a Kepler target with no pscomppars row we fall
+    back to cumulative (koi_period / koi_prad / koi_srad) for the check.
     """
-    query = ("select pl_name,pl_rade,pl_radj,st_rad from pscomppars "
-             f"where hostname='{hostname}'")
-    url = f"{ARCHIVE_TAP}?query={urllib.parse.quote(query, safe='')}&format=json"
-    with urllib.request.urlopen(url, timeout=timeout) as resp:
-        rows = json.loads(resp.read().decode())
+    rows = _tap("select pl_name,pl_orbper,pl_rade,pl_radj,st_rad from "
+                f"pscomppars where hostname='{hostname}'", timeout)
+
+    if not rows and hostname.lower().startswith("kepler-"):
+        koi = _tap("select kepler_name,koi_period,koi_prad,koi_srad from "
+                   f"cumulative where kepler_name like '{hostname} %' and "
+                   "koi_disposition='CONFIRMED'", timeout)
+        rows = [{"pl_name": r.get("kepler_name"),
+                 "pl_orbper": r.get("koi_period"),
+                 "pl_rade": r.get("koi_prad"), "pl_radj": None,
+                 "st_rad": r.get("koi_srad")} for r in koi]
 
     planets = []
     for row in rows:
@@ -72,8 +95,37 @@ def query_archive(hostname, timeout=30):
             elif row.get("pl_radj") is not None:
                 rp_over_rstar = row["pl_radj"] * R_JUP_OVER_R_SUN / st_rad
         planets.append({"pl_name": row.get("pl_name"),
+                        "pl_orbper": row.get("pl_orbper"),
                         "rp_over_rstar": rp_over_rstar})
     return planets
+
+
+def period_check(measured, planets, kmax=8):
+    """
+    Compare the measured period against EVERY published planet in the system
+    and return the closest simple-harmonic relationship:
+
+        (pl_name, published_period, ratio, label, fractional_residual)
+
+    label is "1x" when BLS found the fundamental, "3x" when it locked onto a
+    period three times too long, "1/2x" when it found a sub-harmonic. A tiny
+    residual on a label other than "1x" is the signature of an alias; a large
+    residual on any label means the period matches nothing published and
+    should be treated as unexplained, not as a match.
+    """
+    best = None
+    for p in planets:
+        pub = p.get("pl_orbper")
+        if not pub or not measured:
+            continue
+        ratio = measured / pub
+        cands = [(float(k), f"{k}x") for k in range(1, kmax + 1)]
+        cands += [(1.0 / k, f"1/{k}x") for k in range(2, kmax + 1)]
+        for val, label in cands:
+            resid = abs(ratio - val) / val
+            if best is None or resid < best[4]:
+                best = (p["pl_name"], pub, ratio, label, resid)
+    return best
 
 
 def primary_planet(planets):
@@ -89,14 +141,15 @@ def primary_planet(planets):
 
 
 def local_ratios(target_id):
-    """(bls, pinn) Rp/R* from the local DB, each None if absent."""
+    """(bls, pinn) Rp/R* and the measured BLS period from the local DB."""
     loaded = storage.load_target(target_id)
     if loaded is None:
-        return None, None
+        return None, None, None
     results = loaded["results"]
     bls = results.get("bls", {}).get("rp_over_rstar")
     pinn = results.get("pinn", {}).get("rp_over_rstar")
-    return bls, pinn
+    period = results.get("bls", {}).get("period_days")
+    return bls, pinn, period
 
 
 def pct_diff(measured, published):
@@ -110,13 +163,15 @@ def collect(targets):
     """Build one comparison row per target."""
     rows = []
     for target in targets:
-        bls, pinn = local_ratios(target)
+        bls, pinn, period = local_ratios(target)
         published = None
+        pcheck = None
         n_planets = 0
         note = ""
         try:
             planets = query_archive(target)
             n_planets = sum(1 for p in planets if p["rp_over_rstar"] is not None)
+            pcheck = period_check(period, planets)
             prim = primary_planet(planets)
             if prim is not None:
                 published = prim["rp_over_rstar"]
@@ -130,6 +185,10 @@ def collect(targets):
             note = f"archive error: {exc}"
         rows.append({
             "target": target, "published": published,
+            "period": period,
+            "period_ref": pcheck[1] if pcheck else None,
+            "harmonic": pcheck[3] if pcheck else None,
+            "harm_resid": pcheck[4] if pcheck else None,
             "bls": bls, "pinn": pinn,
             "bls_dpct": pct_diff(bls, published),
             "pinn_dpct": pct_diff(pinn, published),
@@ -144,20 +203,24 @@ def _fmt(x, spec="{:.4f}"):
 
 def print_table(rows):
     """Aligned plain-text table for the terminal."""
-    header = ("Target", "Published", "BLS", "ΔBLS%", "PINN", "ΔPINN%", "Note")
-    widths = [12, 10, 9, 8, 9, 8, 28]
+    header = ("Target", "BLS P", "Pub P", "Harm", "resid", "Published",
+              "BLS", "ΔBLS%", "PINN", "ΔPINN%")
+    widths = [12, 10, 10, 6, 9, 10, 9, 8, 9, 8]
     line = "  ".join(h.ljust(w) for h, w in zip(header, widths))
     print(line)
     print("  ".join("-" * w for w in widths))
     for r in rows:
         cells = [
             r["target"],
+            _fmt(r["period"]),
+            _fmt(r["period_ref"]),
+            r["harmonic"] or "—",
+            _fmt(r["harm_resid"], "{:.2e}"),
             _fmt(r["published"]),
             _fmt(r["bls"]),
             _fmt(r["bls_dpct"], "{:+.1f}"),
             _fmt(r["pinn"]),
             _fmt(r["pinn_dpct"], "{:+.1f}"),
-            r["note"],
         ]
         print("  ".join(str(c).ljust(w) for c, w in zip(cells, widths)))
 

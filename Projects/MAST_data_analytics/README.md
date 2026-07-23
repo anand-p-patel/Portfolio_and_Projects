@@ -1,7 +1,5 @@
 # MAST Data Analytics Engine
 
-Demo dashboard: https://zkpbhftuksemqomavw8e4z.streamlit.app/
-
 An end-to-end analytics engine for MAST data — Kepler / K2 / TESS time-series photometry, plus JWST / HST spectroscopy of Wolf-Rayet stars. It:
 
 - **measures exoplanet sizes** — removes instrument drift, finds transits with Box Least Squares, and fits the planet-to-star radius ratio two ways (the classical BLS box and a Physics-Informed Neural Network);
@@ -34,8 +32,17 @@ python run_pipeline.py --synthetic --pinn                   # offline demo, know
 python run_pipeline.py --targets Kepler-8 Kepler-10 --pinn  # real data from MAST
 python run_pipeline.py --targets TOI-132 --mission TESS --pinn --vet   # + false-positive vetting
 python run_pipeline.py --targets "HD 50896" --mission TESS --mode variability --pinn   # Wolf-Rayet coherence
-python validate.py --range Kepler 8 17                      # compare vs NASA archive
+python validate.py --range Kepler 8 17                      # compare vs NASA archive (period + Rp/R*)
+python run_pipeline.py --self-test                         # validation harness — exits non-zero on failure
 ```
+
+The `--self-test` harness asserts recovered-vs-truth on the synthetic
+targets, rejects a known eclipsing binary, and catches a period alias (it
+runs in memory, writes nothing, and returns non-zero on any failure).
+`validate.py` cross-checks both Rp/R* **and** orbital period against the
+NASA archive, flagging any target where BLS locked onto a harmonic of the
+true period. See [METHODOLOGY.md](METHODOLOGY.md) for the aliasing story and
+the physics.
 
 Note: PyTorch requires Python ≤ 3.13 — on Windows use `py -3.12 -m venv .venv` if your default Python is newer. The dashboard itself has no such constraint.
 

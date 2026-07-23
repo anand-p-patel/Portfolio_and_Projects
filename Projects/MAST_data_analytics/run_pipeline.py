@@ -200,7 +200,19 @@ def main():
                              "target pixel files; implies --vet)")
     parser.add_argument("--synthetic", action="store_true",
                         help="Process the offline demo targets instead")
+    parser.add_argument("--self-test", dest="self_test", action="store_true",
+                        help="Run the in-memory validation harness (asserts "
+                             "recovered vs known truth, an EB rejection, and "
+                             "the period-alias trap). Writes nothing; exits "
+                             "non-zero on any failure.")
     args = parser.parse_args()
+
+    # The self-test is a pure, side-effect-free assertion run — no DB, no
+    # network, no artifacts touched. Handle it before init_db().
+    if args.self_test:
+        from pipeline.harness import main as harness_main
+        harness_main()   # exits non-zero on failure
+        return
 
     storage.init_db()
 
