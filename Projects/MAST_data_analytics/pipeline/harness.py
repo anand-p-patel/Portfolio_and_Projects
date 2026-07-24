@@ -36,10 +36,11 @@ testing — see below):
 import numpy as np
 
 from pipeline.synthetic import (make_synthetic_light_curve, DEMO_TARGETS,
-                                HARNESS_TARGETS)
+                                HARNESS_TARGETS, injected_quality_factor)
 from pipeline.transform import flatten_light_curve
 from pipeline.analyze import run_bls
 from pipeline.vetting import vet_lightcurve
+from pipeline.coherence import coherence_Q, Q_CEIL
 
 TOL = {
     "period_days": ("frac", 5e-3),
@@ -214,6 +215,56 @@ def _shallow_pinn_case():
              f"({detail})")]
 
 
+def _coherence_case(n_seeds: int = 12, tol: float = 0.25):
+    """
+    SYNTH-Q-* — validate the coherence Q against injected ground truth.
+
+    A phase random walk of known step has an exact analytic Q (see
+    synthetic.injected_quality_factor), so measured-vs-truth is checkable.
+    This is what caught the two estimator systematics in coherence_Q: a
+    biased-ACF triangular taper that forced a finite Q on a perfectly
+    coherent signal (window-dependent: 90.9 at P=0.85/30 d, 51.0 at
+    P=1.3/30 d), and a noise-plateau selection bias that read an injected
+    Q of 5 back as 21.
+
+    Averaged over realisations on purpose: the claim under test is that the
+    ESTIMATOR is unbiased, which is a statement about the expectation, not
+    about one noisy realisation. Fixed seeds keep it deterministic.
+    Torch-free and fast — Q never touches the network.
+    """
+    checks = []
+    for name in ("SYNTH-Q-LOW", "SYNTH-Q-MID"):
+        base = HARNESS_TARGETS[name]
+        truth = injected_quality_factor(base["period_days"],
+                                        base["phase_sigma"])
+        qs = []
+        for k in range(n_seeds):
+            p = dict(base, seed=base["seed"] + k)
+            lc = make_synthetic_light_curve(p)
+            qs.append(coherence_Q(np.asarray(lc.time.value),
+                                  np.asarray(lc.flux.value),
+                                  p["period_days"]))
+        measured = float(np.mean(qs))
+        err = abs(measured - truth) / truth
+        checks.append((f"{name}.quality_factor", err <= tol,
+                       f"mean Q over {n_seeds} seeds = {measured:.1f}, "
+                       f"truth {truth:.1f}  (|Δ|/t={err:.1%} ≤ {tol:.0%})"))
+
+    # Coherent control: no decoherence is injected, so the true Q is
+    # infinite. Anything well below the ceiling means the estimator's own
+    # window is being reported as the star's coherence — the regression
+    # test for the biased-ACF taper.
+    base = HARNESS_TARGETS["SYNTH-Q-COHERENT"]
+    lc = make_synthetic_light_curve(base)
+    q = coherence_Q(np.asarray(lc.time.value), np.asarray(lc.flux.value),
+                    base["period_days"])
+    want = 0.9 * Q_CEIL
+    checks.append(("SYNTH-Q-COHERENT.quality_factor", q >= want,
+                   f"Q={q:.1f} for a signal with infinite true coherence "
+                   f"(want ≥ {want:.0f}; the old biased ACF gave 90.9 here)"))
+    return checks
+
+
 def run():
     """
     Run every case; return (rows, n_fail). Each row is
@@ -236,6 +287,7 @@ def run():
     rows += tag(_eb_case(), False)
     rows += tag(_bigrp_case(), False)
     rows += tag(_alias_case(), False)
+    rows += tag(_coherence_case(), False)
     rows += tag(_eb_sec_case(), True)
     rows += tag(_shallow_pinn_case(), True)
     n_fail = sum(1 for _, ok, _, xfail in rows

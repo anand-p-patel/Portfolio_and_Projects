@@ -36,16 +36,21 @@ the SHO on top (see the variability section).
 | SYNTH-DEMO   | 0.0949      | 0.0944       | 0.0935 |
 | SYNTH-DEMO-B | 0.1265      | 0.1259       | 0.1252 |
 
-| Target   | Truth P (d) | Recovered P | Recovered amp | PINN Q | coherence |
-|----------|-------------|-------------|---------------|--------|-----------|
-| SYNTH-VAR | 0.8500 | 0.8519 | 0.0197 | 87.7 | coherent |
-| SYNTH-WR  | 1.3000 | 1.2707 | 0.0303 | 13.0 | stochastic |
+| Target   | Truth P (d) | Recovered P | Recovered amp | Truth Q | Measured Q |
+|----------|-------------|-------------|---------------|---------|------------|
+| SYNTH-VAR | 0.8500 | 0.8519 | 0.0197 | ∞ (coherent) | 200 (ceiling) |
+| SYNTH-WR  | 1.3000 | 1.2707 | 0.0303 | 1.10 | 1.15 |
 
-The two variability targets differ only in coherence — SYNTH-VAR is a
-clean pulsation, SYNTH-WR a phase-wandering Wolf-Rayet-like wind — and the
-Phase 7 SHO-PINN's quality factor Q separates them cleanly (87.7 vs 13.0)
-while both periods and amplitudes are recovered. See the variability
-section below.
+The two variability targets differ only in coherence — SYNTH-VAR is a clean
+pulsation with no decoherence injected at all (true Q infinite), SYNTH-WR a
+phase-wandering Wolf-Rayet-like wind whose injected 0.30 rad/sample phase
+random walk implies an exact **Q = 1.10**. Both periods and amplitudes are
+recovered, and the measured coherence now matches truth (SYNTH-WR 1.15 vs
+1.10, +5%).
+
+Those Q values used to read **87.7** and **13.0**. Both were wrong, and
+finding out why is the subject of "Validating the coherence Q" below — the
+short version is that neither number was measuring the star.
 
 Both transit methods recover the truth to within ~1.5%. The synthetic
 generator injects *box* transits (a flat-bottomed dip), so this is
@@ -183,8 +188,9 @@ The synthetic path used to print truth beside recovered and never compare
 them: a harness built to be read, not to fail. `run_pipeline.py --self-test`
 now asserts. Per synthetic target it checks recovered vs known truth against
 per-quantity tolerances (period 0.5 %, depth 10 %, Rp/R* 5 %, duration one
-BLS grid cell), and it adds five stress cases the old demo set never
-covered:
+BLS grid cell), and it adds the stress cases the old demo set never
+covered — plus the `SYNTH-Q-*` coherence trio described under "Validating
+the coherence Q":
 
 - **SYNTH-EB** — an eclipsing binary that *must* be rejected. It has
   unequal odd/even eclipse depths and no visible secondary, so BLS finds its
@@ -230,7 +236,7 @@ torch-less skips stay green, so it is safe to run in CI:
 
 ```bash
 python run_pipeline.py --self-test
-# → 13/13 checks passed, 1 known gap(s) (xfail), 1 skipped.
+# → 16/16 checks passed, 1 known gap(s) (xfail), 1 skipped.
 # (with torch installed the shallow-PINN skip runs as a second xfail)
 ```
 
@@ -324,8 +330,9 @@ limb-darkened model would close.
 Not every target is a transit. In variability mode the pipeline skips
 flattening (the detrender would erase the signal) and characterises the
 star's intrinsic variability. Lomb-Scargle gives the period; the Phase 7
-**SHO-PINN** adds the physics Lomb-Scargle can't: the **quality factor
-Q**, the coherence of the variability.
+SHO layer adds the physics Lomb-Scargle can't: the **quality factor Q**,
+the coherence of the variability (a PINN fits the curve; Q itself is
+measured from the data — see below).
 
 Wolf-Rayet photometric variability — rotating wind structures and
 stochastic clumping — is modelled by a stochastically driven damped
@@ -334,20 +341,70 @@ small PINN fits a smooth model of the light curve (periodic Fourier
 features, torch-free stored curve for the dashboard), and Q is read from
 the SHO's autocorrelation signature: the ACF envelope decays as
 exp(−π·n/Q) at integer-period lags n, so `Q = −π / slope(ln|ACF(nP)|)`.
-**High Q ⇒ coherent pulsation/rotation; low Q ⇒ stochastic wind.** On the
-synthetics above the separation is unambiguous — SYNTH-VAR Q = 87.7,
-SYNTH-WR Q = 13.0 — and the folded model shows it: a coherent signal
-folds to a clean curve, an incoherent one folds nearly flat.
+**High Q ⇒ coherent pulsation/rotation; low Q ⇒ stochastic wind.**
+
+Note what Q is and is not: it is a **classical statistic on the raw light
+curve**, not a network output. It lives in the torch-free
+`pipeline/coherence.py`; measuring it on the over-smoothed PINN model would
+erase the very incoherence being quantified. The PINN contributes the fitted
+curve and the amplitude — the SHO physics contributes Q.
+
+### Validating the coherence Q (and the two systematics it exposed)
+
+Q went unvalidated far longer than the transit side, and the ordering it
+produced ("SYNTH-VAR is more coherent than SYNTH-WR") was correct, which is
+exactly what let two estimator bugs hide. A phase random walk has an *exact*
+analytic quality factor — Q = 2π·cadence/(P·σ²) for a per-sample phase step
+σ (`synthetic.injected_quality_factor`) — so measured-vs-truth is checkable,
+and it did not survive the check:
+
+1. **A triangular taper from the biased ACF estimator.** `np.correlate` sums
+   only N−k products at lag k but normalises against lag 0's N terms,
+   imposing a spurious (1−k/N) decay. That alone forces a *finite* Q on a
+   *perfectly coherent* signal, set by the observing window rather than the
+   star: a pure sinusoid measured **90.9** at P=0.85 d over 30 d, **51.0** at
+   P=1.3 d, and 200 over 120 d. SYNTH-VAR's old "Q = 87.7" was that number —
+   the window, not the pulsation.
+2. **A noise-plateau selection bias.** The sample ACF decays correctly for a
+   few lags then flattens onto the estimator's own sampling noise
+   (~1/√N_indep) rather than continuing to zero. The old fixed `floor = 0.05`
+   sat *below* that plateau, so noise was fitted as signal, flattening the
+   slope and inflating Q: an injected Q of 5 read back as **21**.
+
+The fixes are an unbiased ACF (divide each lag by its own overlap count) and
+truncating at the noise plateau (the physical envelope must decay
+monotonically, so stop at the first non-decrease) with inverse-variance
+weights w = ACF². Accuracy against injected truth, mean of 8 seeds:
+
+| Q_true | 2 | 5 | 10 | 20 | 50 | 100 | 200 |
+|--------|---|---|----|----|----|-----|-----|
+| old | +468% | +163% | +53% | −2% | −26% | −39% | −55% |
+| new | −8% | +4% | +2% | +0% | −7% | −14% | −20% |
+
+The old estimator was accidentally accurate near Q ≈ 20 — where the taper's
+downward bias cancelled the plateau's upward bias — which is precisely why a
+single demo pair looked plausible. `SYNTH-Q-LOW`, `SYNTH-Q-MID` and
+`SYNTH-Q-COHERENT` in the harness now assert this; two of the three fail on
+the old code. Residual downward bias above Q ≈ 50 is inherent (resolving a
+slow decay needs a baseline many coherence times long), so **treat Q > ~100
+as "at least this coherent" rather than a precise value.**
 
 **Real Wolf-Rayet stars.** The dashboard carries a curated Wolf-Rayet
 mission (its own set — WR stars aren't in the exoplanet catalogues, their
 TESS headers carry wrong stellar parameters, and their periods collide
-with red noise, so each ships with literature Teff/radius/period). Run on
-real TESS data they behave exactly as the physics says a hot-star wind
-should: **WR 6 (EZ CMa) Q ≈ 5, WR 134 Q ≈ 3** — low coherence, stochastic
-wind — against the coherent synthetic pulsator's Q ≈ 88. A bounded period
-search (±40% around the literature period) keeps the ~day-scale wind
-signal from losing to ~50 d instrumental trends.
+with red noise, so each ships with literature Teff/radius/period). With the
+corrected estimator they read **WR 136 Q ≈ 1.0, WR 134 Q ≈ 1.4, WR 6 (EZ
+CMa) Q ≈ 7.0** — winds that decohere within a few rotations, which is what a
+clumped hot-star wind should do, and materially lower than the old 3–6. A
+bounded period search (±40% around the literature period) keeps the
+~day-scale wind signal from losing to ~50 d instrumental trends.
+
+Two honest caveats on those numbers. The lag indexing assumes near-uniform
+cadence, and real TESS data has downlink gaps — so the *synthetic* validation
+above is exact while the WR values are approximate. And WR 6, noted in the
+literature as a famously *period-wandering* wind, comes out the most coherent
+of the three; that tension is unresolved and is a reason to treat the real-star
+Q values as indicative rather than measured.
 
 **Honest design note.** The textbook PINN move is to put the free-SHO ODE
 residual (g″ + (ω₀/Q)g′ + ω₀²g) directly in the training loss and learn
@@ -473,7 +530,7 @@ pulsation; low Q ⇒ stochastic wind.
 
                      +-- transit ---> ETL detrend -> BLS -> Transit PINN -> Rp/R* -> Vetting -> disposition --+
     MAST light curves|                                                                                        |--> SQLite + .npz --> dashboard
-     (Kepler/K2/TESS)+-- variability -> Lomb-Scargle ------> SHO-PINN ----> coherence Q ----------------------+
+     (Kepler/K2/TESS)+-- variability -> Lomb-Scargle -> Var PINN (curve) + ACF coherence Q (on raw data) ------+
 
     MAST spectra (JWST/HST) --> fetch + parse 1D --> wavelength / flux + WR emission lines -------------------> dashboard
 

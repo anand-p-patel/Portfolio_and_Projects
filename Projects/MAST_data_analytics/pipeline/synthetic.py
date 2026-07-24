@@ -11,6 +11,38 @@ it can't be trusted on real data.
 import numpy as np
 import lightkurve as lk
 
+
+def injected_quality_factor(period_days, phase_sigma,
+                            cadence_days: float = 0.0204):
+    """
+    The EXACT quality factor implied by an injected phase random walk — the
+    ground truth the measured Q is validated against.
+
+    A phase-diffusing oscillator sin(omega_0 t + phi(t)), with phi a random
+    walk of per-sample step sigma, has phase variance Var[dphi] = D.tau where
+    the diffusion rate D = sigma^2 / cadence. Its autocorrelation is
+        <cos(dphi)> = exp(-Var[dphi]/2) = exp(-D.tau/2),
+    and matching that envelope to the SHO's exp(-pi n / Q) at tau = nP gives
+
+        Q = 2 pi / (P . D) = 2 pi . cadence / (P . sigma^2)
+
+    phase_sigma = 0 means no decoherence, i.e. infinite Q. Verified against
+    the realised random walk: predicted Var[dphi] 1.2566 vs measured 1.2737.
+    """
+    if not phase_sigma:
+        return float("inf")
+    diffusion = phase_sigma ** 2 / cadence_days
+    return 2.0 * np.pi / (period_days * diffusion)
+
+
+def phase_sigma_for_quality_factor(period_days, quality_factor,
+                                   cadence_days: float = 0.0204):
+    """Inverse of `injected_quality_factor` — the phase step that injects a
+    target Q. Used to build the SYNTH-Q-* validation targets."""
+    diffusion = 2.0 * np.pi / (period_days * quality_factor)
+    return float(np.sqrt(diffusion * cadence_days))
+
+
 DEMO_TARGETS = {
     "SYNTH-DEMO": dict(
         period_days=3.5, t0=1.2, duration_days=0.15, depth=0.009,
@@ -101,6 +133,30 @@ HARNESS_TARGETS = {
         period_days=2.2, t0=0.4, duration_days=0.08, depth=3e-4,
         teff=5800.0, stellar_radius=1.0, n_days=120.0, seed=29,
     ),
+    # --- Coherence (Q) ground truth -------------------------------------
+    # Pure phase-diffusing oscillators with amp_mod_frac=0, so the injected
+    # phase random walk is the ONLY source of decoherence and
+    # `injected_quality_factor` gives the exact analytic Q to validate
+    # against. These caught two estimator systematics in coherence_Q (a
+    # biased-ACF taper and a noise-plateau selection bias) — see that
+    # module's docstring.
+    "SYNTH-Q-COHERENT": dict(          # true Q = infinity -> expect Q_CEIL
+        kind="wr", period_days=1.0, amplitude=0.03,
+        phase_sigma=0.0, amp_mod_frac=0.0,
+        teff=25000.0, stellar_radius=4.0, n_days=60.0, seed=101,
+    ),
+    "SYNTH-Q-MID": dict(               # true Q = 20
+        kind="wr", period_days=1.0, amplitude=0.03,
+        phase_sigma=phase_sigma_for_quality_factor(1.0, 20.0),
+        amp_mod_frac=0.0,
+        teff=25000.0, stellar_radius=4.0, n_days=60.0, seed=102,
+    ),
+    "SYNTH-Q-LOW": dict(               # true Q = 5 (strongly stochastic)
+        kind="wr", period_days=1.0, amplitude=0.03,
+        phase_sigma=phase_sigma_for_quality_factor(1.0, 5.0),
+        amp_mod_frac=0.0,
+        teff=25000.0, stellar_radius=4.0, n_days=60.0, seed=103,
+    ),
 }
 
 # Backward-compatible alias: the primary demo target's ground truth.
@@ -147,10 +203,20 @@ def make_synthetic_light_curve(
         # red noise. Lomb-Scargle still finds ~the period, but the signal
         # decoheres over time -> a low quality factor.
         flux = np.ones_like(time)
-        phase_walk = np.cumsum(rng.normal(0.0, 0.30, size=time.shape))
-        red = np.convolve(rng.normal(0.0, 1.0, size=time.shape),
-                          np.ones(60) / 60, mode="same")
-        amp_mod = 1.0 + 0.6 * red
+        # phase_sigma is the per-sample random-walk step (radians): it sets
+        # the coherence, and `injected_quality_factor` converts it to the
+        # exact Q the SHO physics predicts. amp_mod_frac adds slow envelope
+        # modulation; set it to 0 for a pure phase-diffusion target whose
+        # analytic Q is unpolluted (the SYNTH-Q-* validation cases do this).
+        phase_sigma = float(p.get("phase_sigma", 0.30))
+        amp_mod_frac = float(p.get("amp_mod_frac", 0.6))
+        phase_walk = (np.cumsum(rng.normal(0.0, phase_sigma, size=time.shape))
+                      if phase_sigma > 0 else np.zeros_like(time))
+        amp_mod = 1.0
+        if amp_mod_frac:
+            red = np.convolve(rng.normal(0.0, 1.0, size=time.shape),
+                              np.ones(60) / 60, mode="same")
+            amp_mod = 1.0 + amp_mod_frac * red
         flux += (p["amplitude"] * amp_mod
                  * np.sin(2 * np.pi * time / p["period_days"] + phase_walk))
     elif p.get("kind") == "eb":

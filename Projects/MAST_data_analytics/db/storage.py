@@ -128,13 +128,21 @@ def save_target(target_id, mission, raw_time, raw_flux, time, flux,
     with its host-star parameters (Teff in K, radius in R_sun)."""
     os.makedirs(DATA_DIR, exist_ok=True)
     safe_name = target_id.replace(" ", "_").replace("/", "_")
-    data_path = os.path.join(DATA_DIR, f"{safe_name}.npz")
+    file_name = f"{safe_name}.npz"
+    abs_path = os.path.join(DATA_DIR, file_name)
 
     np.savez_compressed(
-        data_path,
+        abs_path,
         raw_time=raw_time, raw_flux=raw_flux,
         time=time, flux=flux,
     )
+
+    # Store the BASENAME, never this machine's absolute path. _resolve_npz
+    # looks the file up under the current KEPLER_DATA_DIR, so a bundled DB
+    # stays portable; writing an absolute path here is what broke the first
+    # cloud deploy, and it silently came back every time a target was
+    # reprocessed on a dev box.
+    data_path = file_name
 
     with _connect(db_path) as conn:
         conn.execute(

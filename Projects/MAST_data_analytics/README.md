@@ -4,7 +4,7 @@ An end-to-end analytics engine for MAST data — Kepler / K2 / TESS time-series 
 
 - **measures exoplanet sizes** — removes instrument drift, finds transits with Box Least Squares, and fits the planet-to-star radius ratio two ways (the classical BLS box and a Physics-Informed Neural Network);
 - **vets false positives** — odd/even, secondary-eclipse, transit-SNR and centroid-motion tests assign each candidate a disposition (planet candidate / needs review / likely false positive);
-- **characterises variable stars** — a second SHO-PINN measures the coherence (quality factor Q) of stellar variability, with a dedicated Wolf-Rayet mission;
+- **characterises variable stars** — a second PINN fits the variability curve, and the damped-harmonic-oscillator coherence (quality factor Q) is measured from the light curve's autocorrelation, validated against injected ground truth; with a dedicated Wolf-Rayet mission;
 - **displays JWST / HST spectra** — fetches and parses 1D spectra from MAST (JWST EXTRACT1D, HST STIS/GHRS) with Wolf-Rayet emission-line markers;
 - **validates against the NASA Exoplanet Archive** and serves everything through an interactive Streamlit dashboard.
 

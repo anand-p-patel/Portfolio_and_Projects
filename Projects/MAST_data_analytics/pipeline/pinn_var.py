@@ -17,6 +17,11 @@ What this module does
 2. Q is measured from the SHO's autocorrelation signature: a damped
    oscillator's ACF envelope decays as exp(-ω₀ τ / 2Q) = exp(-π n / Q) at
    integer-period lags n, so  Q = -π / slope( ln|ACF(nP)| vs n ).
+   IMPORTANT: Q is NOT a network output. It is a classical statistic
+   computed on the RAW light curve and it lives in the torch-free
+   pipeline/coherence.py — measuring it on the over-smoothed model would
+   erase the very incoherence being quantified. The PINN contributes the
+   fitted curve and the amplitude; the SHO physics contributes Q.
 
 DESIGN NOTE — why not an ODE-residual training loss?
     The textbook PINN move is to put the free-SHO residual
@@ -40,8 +45,10 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from pipeline.pinn import FourierFeatures   # reuse the transit encoder
-
-Q_CEIL = 200.0   # report Q at most this (a very coherent signal)
+# Q is a classical ACF statistic on the RAW data, not a network output, so it
+# lives in a torch-free module (and the harness can test it without torch).
+# Re-exported here for backward compatibility.
+from pipeline.coherence import coherence_Q, Q_CEIL, Q_FLOOR   # noqa: F401
 
 
 class VarNet(nn.Module):
@@ -70,37 +77,6 @@ class VarNet(nn.Module):
 
     def forward(self, tau):
         return self.mu + self.g(tau)
-
-
-def coherence_Q(time, flux, period, n_max: int = 15, floor: float = 0.05):
-    """
-    Quality factor from the autocorrelation envelope (the SHO coherence).
-
-    ACF(nP) ≈ exp(-π n / Q)  ⇒  Q = -π / slope(ln ACF(nP) vs n).
-    Robust to white noise (which decorrelates away from lag 0) and needs
-    no derivatives. Returns Q capped at Q_CEIL.
-    """
-    t = np.asarray(time, dtype=float)
-    x = np.asarray(flux, dtype=float) - np.mean(flux)
-    ac = np.correlate(x, x, "full")
-    ac = ac[ac.size // 2:]
-    ac /= ac[0]
-    dt = np.median(np.diff(np.sort(t)))
-
-    ns, lns = [], []
-    for n in range(1, n_max + 1):
-        i = int(round(n * period / dt))
-        if i < ac.size and ac[i] > floor:
-            ns.append(n)
-            lns.append(np.log(ac[i]))
-    if len(ns) < 2:
-        return Q_CEIL
-    ns = np.asarray(ns, dtype=float)
-    lns = np.asarray(lns, dtype=float)
-    slope = np.sum(ns * lns) / np.sum(ns * ns)   # least squares through origin
-    if slope >= 0:
-        return Q_CEIL
-    return float(min(-np.pi / slope, Q_CEIL))
 
 
 def train_pinn_var(time, flux, period,
