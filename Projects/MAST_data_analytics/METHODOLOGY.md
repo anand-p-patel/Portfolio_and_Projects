@@ -183,7 +183,7 @@ The synthetic path used to print truth beside recovered and never compare
 them: a harness built to be read, not to fail. `run_pipeline.py --self-test`
 now asserts. Per synthetic target it checks recovered vs known truth against
 per-quantity tolerances (period 0.5 %, depth 10 %, Rp/R* 5 %, duration one
-BLS grid cell), and it adds three stress cases the old demo set never
+BLS grid cell), and it adds five stress cases the old demo set never
 covered:
 
 - **SYNTH-EB** — an eclipsing binary that *must* be rejected. It has
@@ -194,28 +194,44 @@ covered:
 - **SYNTH-EB-SEC** — a *symmetric* eclipsing binary (near-equal primary and
   secondary), which is the **most common** real EB morphology. It *should*
   be rejected, but BLS folds it at P/2 — primary and secondary alternate and
-  look identical at half the period — so the odd/even signal vanishes and it
-  slips through as `candidate`. This is a real false-negative of
-  single-period vetting (the same class of miss as Kepler-16). Rather than
-  hide it behind SYNTH-EB's no-secondary shape, the harness runs it as an
-  **expected failure (xfail)**: it asserts the *desired* `false_positive`,
-  records the miss as a documented known gap, and — because the assertion is
-  for the correct behaviour — would flip to a loud `XPASS` the day the
-  vetting is fixed. A comment saying a test avoids a known failure is a bug
-  report; this is the test.
+  look identical at half the period. The odd/even signal does *not* vanish:
+  it survives at ~16σ. It slips through as `candidate` because the depth
+  difference is only ~12 % of the depth, below the `ODDEVEN_FRAC_MIN = 0.5`
+  fractional gate, which discards it. (Lowering that cut to ~0.10 would
+  catch this injection, but a *truly* symmetric EB is genuinely degenerate
+  under single-period photometry — separating it needs the secondary test
+  evaluated at 2×P, a centroid, or radial velocity. The threshold is
+  miscalibrated by ~4×; tightening it narrows the gap, it does not close
+  it.) Rather than hide this behind SYNTH-EB's no-secondary shape, the
+  harness runs it as an **expected failure (xfail)**: it asserts the
+  *desired* `false_positive`, records the miss as a documented known gap,
+  and — because the assertion is for the correct behaviour — would flip to a
+  loud `XPASS` the day the vetting is fixed. A comment saying a test avoids
+  a known failure is a bug report; this is the test.
 - **SYNTH-ALIAS** — a 1.3 d transit on a real-Kepler-length (1400 d)
   baseline. The coarse grid smears its fundamental, BLS locks onto the 2×
   harmonic, and the harness asserts on *period* — so it fails on the
   un-fixed search and passes once Stage-3 disambiguation is in. It is the
   regression test for the fix.
+- **SYNTH-BIGRP** — a clean but very deep transit (Rp/R* = 0.20, above the
+  `MAX_PLANET_RATIO = 0.18` cap) with no odd/even or secondary signature, so
+  the radius-ratio cap is the only thing that can reject it. It asserts
+  `false_positive` — the regression test for the dual-ratio cap fix, which
+  was otherwise exercised only by Kepler-16 on real data.
+- **SYNTH-SHALLOW** — a Kepler-10-scale shallow transit (Rp/R* ≈ 0.017). BLS
+  recovers it; the transit PINN over-reports its depth (below). The check
+  asserts the *PINN* radius matches truth and is an **xfail**, so the bias
+  is an executed test, not just prose. It needs torch, so it is **skipped**
+  when torch is absent — which keeps the rest of the harness torch-free.
 
 The harness runs entirely in memory, writes nothing to the bundled database,
-and exits non-zero on any *unexpected* result — documented gaps (xfail) stay
-green, so it is safe to run in CI:
+and exits non-zero on any *unexpected* result — documented gaps (xfail) and
+torch-less skips stay green, so it is safe to run in CI:
 
 ```bash
 python run_pipeline.py --self-test
-# → 11/11 checks passed, 1 known gap(s) (xfail).
+# → 13/13 checks passed, 1 known gap(s) (xfail), 1 skipped.
+# (with torch installed the shallow-PINN skip runs as a second xfail)
 ```
 
 The broader point is the honest one: the original validation wasn't
@@ -230,14 +246,24 @@ I know it works, and here is what it still can't do."
 
 With a precisely phased fold, the classical BLS box is hard to beat: on
 the clean hosts it matches published to ~1–3%. The PINN's smooth,
-physics-constrained profile lands in the same few-percent band and is
-comparable, not dramatically better — and on shallow transits it tends to
-*overshoot* the depth slightly (TOI-132 below, Kepler-17 +6.6%), because
-its learned profile fits a sharp central minimum. The PINN's value here is
-the continuous, geometry-constrained transit model and its fitted curve,
-not a headline accuracy win over a well-resolved box. Calibrating the
-PINN's depth read-out (central-minimum vs profile-average) is a clean
-future lever.
+physics-constrained profile lands in the same few-percent band on deep
+transits and is comparable, not dramatically better. Its reported Rp/R* is
+measured off the *fitted profile* — √(1 − mean F_pred) over the in-transit
+grid — not the learnable `depth_param`, which only anchors the profile
+through `L_geometry`.
+
+**Known limitation (shallow transits).** The PINN carries a roughly additive
+depth offset of order ~1e-3 in that profile read-out. On deep transits it is
+swamped; on shallow ones it dominates, and the PINN/BLS radius ratio rises
+monotonically as depth falls — **2.14×** on Kepler-10 (Rp/R* ≈ 0.012), ~1.9×
+on Kepler-11, ~1.7× on TOI-1074.01, down to ~1.0× on the deep hosts. So
+**below Rp/R* ≈ 0.05, trust the BLS value, not the PINN.** This is documented
+three ways so it cannot be mistaken for a measurement: the `SYNTH-SHALLOW`
+harness xfail asserts it, the dashboard's PINN caption says it, and this note
+quantifies it. Calibrating the read-out (central-minimum vs profile-average)
+is a clean future lever; until then the PINN's worth is its continuous,
+geometry-constrained transit model and fitted curve, not a headline accuracy
+win over a well-resolved box on shallow signals.
 
 ### Phase 6 — TESS validation
 
@@ -595,6 +621,16 @@ visit.
       darkening rather than flatten erosion
 - [ ] Limb-darkened transit model (Mandel–Agol) / central-minimum depth
       to close the remaining box-averaging bias
+- [ ] Calibrate the transit PINN's shallow-depth read-out — diagnose and
+      remove the ~1e-3 additive offset in `model_depth` that makes the PINN
+      over-report Rp/R* on shallow transits (PINN/BLS rises monotonically as
+      depth falls: 2.14× on Kepler-10). First step is a cheap diagnostic:
+      scale a synthetic transit's depth down and sweep `n_freq` — if the
+      floor tracks `n_freq`, it's Fourier-basis leakage (core narrower than
+      the basis can represent); also check the `L_baseline` weight and the
+      `depth_param`/`L_geometry` anchor. Currently a documented known
+      limitation, asserted by the `SYNTH-SHALLOW` xfail (trust BLS below
+      Rp/R* ~ 0.05). Needs the torch env and would reprocess every PINN row.
 - [ ] Data-science / classical-ML layer: a scikit-learn supervised
       false-positive classifier (RandomForest/GradientBoosting) trained on
       the pipeline's per-target features vs the archive's dispositions,

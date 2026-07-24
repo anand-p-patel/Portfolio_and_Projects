@@ -68,15 +68,38 @@ HARNESS_TARGETS = {
     # A SYMMETRIC eclipsing binary — near-equal primary and secondary
     # eclipses — which is the *most common* real EB morphology, and the one
     # the single-period vetting misses: BLS folds it at P/2 (primary and
-    # secondary alternate and look identical at half the period), the
-    # odd/even signal vanishes, and it slips through as "candidate". Unlike
-    # SYNTH-EB (which omits the secondary so it is cleanly rejected), this
-    # target documents the KNOWN GAP — the harness asserts the *desired*
-    # rejection and records the result as an expected failure (xfail).
+    # secondary alternate and look identical at half the period). The
+    # odd/even signal does NOT vanish — it is still ~16σ — but the depth
+    # difference is only ~12% of the depth, below ODDEVEN_FRAC_MIN = 0.5, so
+    # the fractional gate discards it and the EB slips through as
+    # "candidate". Lowering that cut (~0.10) would catch this injection, but
+    # a truly symmetric EB (secondary ≈ primary) is genuinely degenerate
+    # under single-period photometry — it needs the secondary test evaluated
+    # at 2×P, a centroid, or RV. Unlike SYNTH-EB (which omits the secondary
+    # so it is cleanly rejected), this target documents the KNOWN GAP: the
+    # harness asserts the *desired* rejection and records it as an xfail.
     "SYNTH-EB-SEC": dict(
         kind="eb", period_days=2.6, t0=0.6, duration_days=0.10,
         odd_depth=0.010, even_depth=0.010, secondary_depth=0.009,
         teff=6000.0, stellar_radius=1.1, n_days=30.0, seed=13,
+    ),
+    # A clean but very DEEP transit — depth 0.04 -> Rp/R* = 0.20, above the
+    # MAX_PLANET_RATIO = 0.18 cap. No odd/even or secondary signature, so the
+    # ONLY thing that can reject it is the radius-ratio cap. It is the
+    # regression test for the dual-ratio MAX_PLANET_RATIO fix (which was
+    # otherwise unreachable and untested): asserts false_positive.
+    "SYNTH-BIGRP": dict(
+        period_days=3.0, t0=0.5, duration_days=0.10, depth=0.04,
+        teff=5800.0, stellar_radius=1.0, n_days=30.0, seed=17,
+    ),
+    # A very SHALLOW transit — depth 3e-4 -> Rp/R* ~ 0.017, Kepler-10 scale.
+    # BLS recovers it, but the transit PINN over-reports the depth (an
+    # additive ~1e-3 offset in its profile read-out is negligible on deep
+    # transits and dominant on shallow ones). Used by the harness's
+    # torch-guarded PINN xfail to document that bias as an executed test.
+    "SYNTH-SHALLOW": dict(
+        period_days=2.2, t0=0.4, duration_days=0.08, depth=3e-4,
+        teff=5800.0, stellar_radius=1.0, n_days=120.0, seed=29,
     ),
 }
 

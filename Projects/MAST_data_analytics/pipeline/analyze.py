@@ -100,10 +100,14 @@ def run_bls(time, flux, min_period: float = 0.5, max_period: float = 15.0,
     Scope of Stage 3: it corrects only the too-LONG direction — a peak at
     k·P_true, recovered as period/k. It does NOT test super-harmonics
     k·period, so a peak that is itself a *sub*-harmonic of a longer signal
-    is left unchanged. That is deliberate: those longer fundamentals are
-    typically outside [min_period, max_period] anyway. Kepler-16 (13.69 d =
-    1/3 of the 41 d stellar eclipse) and Kepler-9 (9.61 d = 1/2 of 19.24 d)
-    are exactly this case — correctly left alone rather than mis-corrected.
+    is left unchanged. Those longer fundamentals are typically outside
+    [min_period, max_period] anyway. Kepler-16 (13.69 d = 1/3 of the 41 d
+    stellar eclipse) and Kepler-9 (9.61 d = 1/2 of 19.24 d) are exactly this
+    case: their true fundamentals lie beyond max_period, so Stage 3 cannot
+    reach them — their stored periods remain aliased (out of scope here),
+    not corrected. (Kepler-16 is separately rejected by vetting for an
+    unrelated reason — its box-fit Rp/R* trips the stellar-companion cap —
+    which does not make its stored 13.69 d period right.)
 
     Bounded (~45k evaluations total), fast, and cadence-agnostic.
 

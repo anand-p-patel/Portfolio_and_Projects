@@ -637,9 +637,11 @@ if mode == "Single target":
                     delta=f"{pinn['rp_over_rstar'] - bls['rp_over_rstar']:+.4f}",
                 )
                 st.caption(
-                    "Delta vs the classical BLS baseline. The PINN fits a "
-                    "smooth, physics-constrained transit profile; on clean "
-                    "single-transit targets the two agree to a few percent."
+                    "Delta vs the classical BLS baseline. On clean, deep "
+                    "single-transit targets the two agree to a few percent; "
+                    "on shallow transits the PINN tends to over-report the "
+                    "depth (an additive offset in its profile read-out), so "
+                    "below Rp/R★ ≈ 0.05 trust the BLS value."
                 )
             else:
                 st.info(

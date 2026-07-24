@@ -128,8 +128,10 @@ def _eb_sec_case():
     """
     SYNTH-EB-SEC — a symmetric EB (near-equal primary + secondary), the most
     common real EB morphology. It SHOULD be rejected, but BLS folds it at
-    P/2 where the odd/even signal vanishes, so single-period vetting passes
-    it as `candidate`. This documents that KNOWN GAP: the check asserts the
+    P/2, and although the odd/even signal survives (~16σ) the depth
+    difference is only ~12 % of the depth — below ODDEVEN_FRAC_MIN = 0.5 —
+    so the fractional gate discards it and single-period vetting passes it
+    as `candidate`. This documents that KNOWN GAP: the check asserts the
     desired `false_positive`, and run() marks it expect_fail so the miss is
     recorded as an xfail rather than hidden. If the vetting is ever fixed to
     catch it, this flips to XPASS and flags that the gap has closed.
@@ -140,28 +142,88 @@ def _eb_sec_case():
     v = vet_lightcurve(time, flux, r["period_days"], r["t0"],
                        r["duration_days"],
                        bls_rp_over_rstar=r.get("rp_over_rstar"))
+    frac = (abs(v["odd_depth"] - v["even_depth"]) / v["depth"]
+            if v["depth"] else float("nan"))
     return [("SYNTH-EB-SEC.disposition",
              v["disposition"] == "false_positive",
              f"got {v['disposition']!r}, want 'false_positive'  "
-             f"(BLS folded at P={r['period_days']:.3f} = P_true/2; "
-             f"odd/even σ={v['oddeven_sigma']:.0f}, no flag fires)")]
+             f"(BLS folded at P={r['period_days']:.3f} = P_true/2; odd/even "
+             f"σ={v['oddeven_sigma']:.0f} present but frac={frac:.2f} < "
+             f"ODDEVEN_FRAC_MIN 0.5, so discarded)")]
+
+
+def _bigrp_case():
+    """
+    SYNTH-BIGRP — a clean but very deep transit (Rp/R* = 0.20, above the
+    MAX_PLANET_RATIO = 0.18 cap) with no odd/even or secondary signature, so
+    the radius-ratio cap is the only test that can reject it. The regression
+    test for the dual-ratio MAX_PLANET_RATIO fix, which was otherwise
+    exercised only by Kepler-16 on real data and had no synthetic test.
+    """
+    params = HARNESS_TARGETS["SYNTH-BIGRP"]
+    lc = make_synthetic_light_curve(params)
+    time, flux, r = _flatten_bls(lc)
+    v = vet_lightcurve(time, flux, r["period_days"], r["t0"],
+                       r["duration_days"],
+                       bls_rp_over_rstar=r.get("rp_over_rstar"))
+    cap = any("too large" in f for f in v["flags"])
+    return [
+        ("SYNTH-BIGRP.disposition", v["disposition"] == "false_positive",
+         f"got {v['disposition']!r}, want 'false_positive'  "
+         f"(BLS Rp/R*={r['rp_over_rstar']:.2f} > 0.18)"),
+        ("SYNTH-BIGRP.radius_cap", cap,
+         f"radius-ratio cap {'fired' if cap else 'did NOT fire'}"),
+    ]
+
+
+def _shallow_pinn_case():
+    """
+    SYNTH-SHALLOW — a Kepler-10-scale shallow transit. BLS recovers it, but
+    the transit PINN over-reports the depth (a ~1e-3 additive offset in its
+    profile read-out — negligible when deep, dominant when shallow). The
+    check asserts the PINN Rp/R* matches truth and is marked expect_fail, so
+    the bias is an executed xfail rather than only a prose caveat. Training
+    the PINN needs torch; when torch is absent the case is SKIPPED (ok=None),
+    keeping --self-test runnable torch-free.
+    """
+    label = "SYNTH-SHALLOW.pinn_rp_over_rstar"
+    try:
+        from pipeline.pinn import train_pinn
+    except Exception:
+        return [(label, None,
+                 "SKIPPED — torch not installed (PINN not exercised)")]
+    params = HARNESS_TARGETS["SYNTH-SHALLOW"]
+    lc = make_synthetic_light_curve(params)
+    time, flux, r = _flatten_bls(lc)
+    pinn_res, _ = train_pinn(time, flux, period=r["period_days"],
+                             t0=r["t0"], duration=r["duration_days"])
+    truth_rp = float(np.sqrt(params["depth"]))
+    ok, detail = _check("rp_over_rstar", pinn_res["rp_over_rstar"], truth_rp)
+    return [(label, ok,
+             f"PINN got {pinn_res['rp_over_rstar']:.4f}, truth {truth_rp:.4f}  "
+             f"({detail})")]
 
 
 def run():
     """
     Run every case; return (rows, n_fail). Each row is
-    (label, ok, detail, expect_fail). A row counts toward n_fail when it is
-    an unexpected failure (not ok, not expected) OR an unexpected pass
-    (ok, but expected to fail — a known gap that has silently closed).
+    (label, ok, detail, expect_fail), where ok is True/False, or None for a
+    SKIPPED check (e.g. a PINN case with no torch). A row counts toward
+    n_fail when it is an unexpected failure (not ok, not expected) OR an
+    unexpected pass (ok, but expected to fail — a known gap that has silently
+    closed). Skipped rows never count.
     """
     rows = []
     for name in ("SYNTH-DEMO", "SYNTH-DEMO-B"):
         rows += [(l, o, d, False) for l, o, d in
                  _transit_case(name, DEMO_TARGETS[name])]
     rows += [(l, o, d, False) for l, o, d in _eb_case()]
+    rows += [(l, o, d, False) for l, o, d in _bigrp_case()]
     rows += [(l, o, d, False) for l, o, d in _alias_case()]
     rows += [(l, o, d, True) for l, o, d in _eb_sec_case()]
-    n_fail = sum(1 for _, ok, _, xfail in rows if ok == xfail)
+    rows += [(l, o, d, True) for l, o, d in _shallow_pinn_case()]
+    n_fail = sum(1 for _, ok, _, xfail in rows
+                 if ok is not None and ok == xfail)
     return rows, n_fail
 
 
@@ -174,19 +236,24 @@ def main():
     print("Validation harness — recovered vs known truth\n")
     rows, n_fail = run()
     width = max(len(label) for label, _, _, _ in rows)
-    n_xfail = 0
+    n_xfail = n_skip = 0
     for label, ok, detail, xfail in rows:
-        if xfail:
+        if ok is None:
+            mark = "SKIP"
+            n_skip += 1
+        elif xfail:
             mark = "XPASS" if ok else "XFAIL"   # XPASS = a known gap closed
             n_xfail += not ok
         else:
             mark = "PASS" if ok else "FAIL"
         print(f"  [{mark}] {label.ljust(width)}  {detail}")
     total = len(rows)
-    hard = total - n_xfail          # checks expected to pass
+    hard = total - n_xfail - n_skip          # checks expected to pass
     summary = f"\n{hard - n_fail}/{hard} checks passed"
     if n_xfail:
         summary += f", {n_xfail} known gap(s) (xfail)"
+    if n_skip:
+        summary += f", {n_skip} skipped"
     print(summary + ".")
     if n_fail:
         print(f"{n_fail} unexpected result(s) — FAILED.")

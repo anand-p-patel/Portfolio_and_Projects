@@ -13,10 +13,15 @@ Design contract
 - Output: predicted flux F(phase)
 - Loss:   L_total = L_data + lambda * L_geometry + 0.1 * L_baseline
     L_data     = MSE(F_pred, F_obs)              (fit the photometry)
-    L_geometry = (DeltaF_model - depth_param)^2  (transit geometry:
-                 the network's realized depth must equal the explicit
-                 physical depth parameter; sqrt(depth_param) IS the
-                 PINN's Rp/R* estimate)
+    L_geometry = (DeltaF_model - depth_param)^2  (transit geometry: pull
+                 the learnable depth_param toward the network's realized
+                 profile depth. NOTE: the REPORTED Rp/R* is
+                 sqrt(model_depth), where model_depth = 1 - mean(F_pred over
+                 the in-transit dense grid) — measured off the FITTED
+                 PROFILE, not sqrt(depth_param). L_geometry only anchors the
+                 two together, so they agree when training converges and can
+                 diverge when it doesn't; depth_param never enters the
+                 results dict.)
     L_baseline = mean((F_oot - 1)^2)             (out-of-transit flux
                  is normalized to exactly 1 — flux conservation)
 
