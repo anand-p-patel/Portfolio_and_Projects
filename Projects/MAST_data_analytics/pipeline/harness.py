@@ -195,8 +195,18 @@ def _shallow_pinn_case():
     params = HARNESS_TARGETS["SYNTH-SHALLOW"]
     lc = make_synthetic_light_curve(params)
     time, flux, r = _flatten_bls(lc)
-    pinn_res, _ = train_pinn(time, flux, period=r["period_days"],
-                             t0=r["t0"], duration=r["duration_days"])
+    # Guard the training call too, not just the import: a numerical blow-up
+    # or a device problem should report one failed row, not take down the
+    # whole harness.
+    try:
+        pinn_res, _ = train_pinn(time, flux, period=r["period_days"],
+                                 t0=r["t0"], duration=r["duration_days"])
+    except Exception as exc:
+        # Emit an explicit non-xfail row (4-tuple) so a crash is a REAL
+        # failure — if it inherited this case's expect_fail it would be
+        # silently recorded as the known gap and the suite would stay green.
+        return [(label, False,
+                 f"PINN training FAILED: {type(exc).__name__}: {exc}", False)]
     truth_rp = float(np.sqrt(params["depth"]))
     ok, detail = _check("rp_over_rstar", pinn_res["rp_over_rstar"], truth_rp)
     return [(label, ok,
@@ -213,15 +223,21 @@ def run():
     unexpected pass (ok, but expected to fail — a known gap that has silently
     closed). Skipped rows never count.
     """
+    def tag(checks, default_xfail):
+        """Attach expect_fail, letting a case override it per row: a check
+        returned as a 4-tuple keeps its own flag (used so a PINN crash is a
+        real FAIL, not the case's expected xfail)."""
+        return [c if len(c) == 4 else (c[0], c[1], c[2], default_xfail)
+                for c in checks]
+
     rows = []
     for name in ("SYNTH-DEMO", "SYNTH-DEMO-B"):
-        rows += [(l, o, d, False) for l, o, d in
-                 _transit_case(name, DEMO_TARGETS[name])]
-    rows += [(l, o, d, False) for l, o, d in _eb_case()]
-    rows += [(l, o, d, False) for l, o, d in _bigrp_case()]
-    rows += [(l, o, d, False) for l, o, d in _alias_case()]
-    rows += [(l, o, d, True) for l, o, d in _eb_sec_case()]
-    rows += [(l, o, d, True) for l, o, d in _shallow_pinn_case()]
+        rows += tag(_transit_case(name, DEMO_TARGETS[name]), False)
+    rows += tag(_eb_case(), False)
+    rows += tag(_bigrp_case(), False)
+    rows += tag(_alias_case(), False)
+    rows += tag(_eb_sec_case(), True)
+    rows += tag(_shallow_pinn_case(), True)
     n_fail = sum(1 for _, ok, _, xfail in rows
                  if ok is not None and ok == xfail)
     return rows, n_fail

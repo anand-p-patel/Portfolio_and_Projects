@@ -33,18 +33,22 @@ python run_pipeline.py --targets Kepler-8 Kepler-10 --pinn  # real data from MAS
 python run_pipeline.py --targets TOI-132 --mission TESS --pinn --vet   # + false-positive vetting
 python run_pipeline.py --targets "HD 50896" --mission TESS --mode variability --pinn   # Wolf-Rayet coherence
 python validate.py --range Kepler 8 17                      # compare vs NASA archive (period + Rp/R*)
-python run_pipeline.py --self-test                         # validation harness — exits non-zero on failure
+python run_pipeline.py --self-test                          # validation harness — non-zero on unexpected results
 ```
 
 The `--self-test` harness asserts recovered-vs-truth on the synthetic
-targets, rejects a known eclipsing binary, and catches a period alias (it
-runs in memory, writes nothing, and returns non-zero on any failure).
+targets, rejects a known eclipsing binary, catches a period alias, and
+exercises the radius-ratio cap. It runs in memory, writes nothing, and
+returns non-zero on any **unexpected** result — documented known gaps
+(xfail) and torch-less skips stay green, so it works as a CI gate. The PINN
+case takes ~2.5 min; without torch that one case is skipped and the run
+takes seconds.
+
 `validate.py` cross-checks both Rp/R* **and** orbital period against the
 NASA archive, flagging any target where BLS locked onto a harmonic of the
-true period. See [METHODOLOGY.md](METHODOLOGY.md) for the aliasing story and
-the physics.
-
-Note: PyTorch requires Python ≤ 3.13 — on Windows use `py -3.12 -m venv .venv` if your default Python is newer. The dashboard itself has no such constraint.
+true period — and the dashboard shows the same check as a badge, so a known
+alias is never rendered as a bare measurement. See
+[METHODOLOGY.md](METHODOLOGY.md) for the aliasing story and the physics.
 
 ## Deploy to Streamlit Community Cloud
 

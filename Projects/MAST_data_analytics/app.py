@@ -46,6 +46,76 @@ def load_catalog(mission):
         return [], str(exc)
 
 
+@st.cache_data(ttl=24 * 3600, show_spinner=False)
+def check_period_alias(target_id, measured_period):
+    """
+    Cross-check a measured BLS period against the NASA archive's published
+    periods. Returns (label, published_period, residual, planet_name), or
+    None when the archive has nothing to compare against or is unreachable.
+
+    Reuses validate.py's period_check — the same harmonic logic the CLI
+    validation table prints — so the dashboard cannot disagree with it.
+    validate imports only the standard library plus db.storage, so this is
+    safe on the lightweight cloud build (no torch / lightkurve / astroquery).
+    Any failure degrades to "no badge" rather than an error.
+    """
+    if not measured_period:
+        return None
+    try:
+        import validate
+        planets = validate.query_archive(target_id)
+        best = validate.period_check(measured_period, planets)
+    except Exception:
+        return None
+    if not best:
+        return None
+    name, published, _ratio, label, residual = best
+    return label, published, residual, name
+
+
+def render_period_alias_badge(target_id, period_days):
+    """
+    Surface what the docs already admit: some stored periods are harmonic
+    aliases. Without this the dashboard renders a known-wrong number as a
+    measurement (Kepler-9 at 9.6107 d, Kepler-16 at 13.6925 d). Showing the
+    archive comparison turns those rows into a demonstration that the
+    pipeline knows they are wrong.
+    """
+    alias = check_period_alias(target_id, period_days)
+    if not alias:
+        return
+    label, published, residual, pname = alias
+    if residual > 0.1:
+        st.warning(
+            f"**This period matches no published planet in this system.** "
+            f"The closest simple ratio to {pname} ({published:.4f} d) is "
+            f"{label}, off by {residual:.0%} — so {period_days:.4f} d should "
+            "be read as unexplained, not as a measurement. Typically the "
+            "detected signal is a stellar eclipse, or the true body's period "
+            "lies outside the 0.5–15 d search grid."
+        )
+    elif label != "1x" and residual <= 1e-4:
+        st.warning(
+            f"**Known period alias.** This is {label} the published period "
+            f"of {pname} ({published:.4f} d), matching to {residual:.1e} — "
+            "the search locked onto a harmonic, so the period above is not "
+            "the true one. See METHODOLOGY → “Harmonic aliasing”."
+        )
+    elif label != "1x":
+        st.warning(
+            f"**Likely period alias (ambiguous).** Closest match is {label} "
+            f"the published period of {pname} ({published:.4f} d), but the "
+            f"residual is {residual:.1e} — large enough that transit-timing "
+            "variations could smear a mean-period fit, so treat this as "
+            "probable rather than proven."
+        )
+    else:
+        st.caption(
+            f"✓ Period cross-checked against the NASA archive: matches "
+            f"{pname} ({published:.4f} d) at 1× (residual {residual:.1e})."
+        )
+
+
 def _pick_random(options):
     """Random-button callback. Setting the widget value in a callback
     (before the widget re-instantiates) is the supported pattern —
@@ -547,6 +617,7 @@ if mode == "Single target":
         c2.metric("Transit depth", f"{bls['depth'] * 100:.3f} %")
         c3.metric("Rp / R\u2605", f"{bls['rp_over_rstar']:.4f}")
         c4.metric("Duration", f"{bls['duration_days'] * 24:.2f} h")
+        render_period_alias_badge(data["target_id"], bls["period_days"])
     elif var:
         pvar = data["results"].get("pinn_var")
         c1, c2, c3, c4 = st.columns(4)

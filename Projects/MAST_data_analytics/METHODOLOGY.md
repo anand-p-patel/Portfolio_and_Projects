@@ -234,6 +234,10 @@ python run_pipeline.py --self-test
 # (with torch installed the shallow-PINN skip runs as a second xfail)
 ```
 
+Runtime: a few seconds without torch; ~2.5 min with it, essentially all of
+which is training the one PINN case. Fine locally and for a per-PR gate;
+worth splitting out if it ever runs per-commit.
+
 The broader point is the honest one: the original validation wasn't
 *absent* — `validate.py` queried a real external archive and printed a MAE
 summary — it was too *narrow*, checking one quantity (Rp/R*) on a target set
